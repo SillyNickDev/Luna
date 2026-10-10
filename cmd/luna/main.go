@@ -14,6 +14,8 @@ const usageText = `usage: luna [--config <dir>] <command>
 
   run                   start the daemon
   sim <event> [flags]   fire a simulated event (luna sim --list)
+  events sessions | replay <n> [--speed N]
+                        list recorded streams, replay one as simulated events
   reload                re-read config; an invalid file keeps the last good one
   auth login [broadcaster|bot]
   auth status | logout [broadcaster|bot]
@@ -45,7 +47,7 @@ func main() {
 			for _, s := range simList {
 				fmt.Printf("  %-7s %-26s luna sim %s %s\n", s.name, s.typ, s.name, s.usage)
 			}
-		case args[0] == "sim", args[0] == "reload", args[0] == "perms":
+		case args[0] == "sim", args[0] == "reload", args[0] == "perms", args[0] == "events":
 			err = call(p, request{Cmd: args[0], Args: args[1:]})
 		case args[0] == "auth" && len(args) >= 2:
 			err = auth(p, args[1], args[2:])

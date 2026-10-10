@@ -97,6 +97,8 @@ func runDaemon(p paths) error {
 				return "", err
 			}
 			return "sent", nil
+		case "events":
+			return eventsCmd(ctx, req.Args, st, publish)
 		case "perms":
 			pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()

@@ -4,6 +4,7 @@ package store
 import (
 	"database/sql"
 	"log/slog"
+	"slices"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -137,4 +138,57 @@ func (s *Store) SetRank(r RankRow) error {
 		ON CONFLICT(user_id) DO UPDATE SET login = excluded.login, rank = excluded.rank, set_by = excluded.set_by, updated = excluded.updated`,
 		r.UserID, r.Login, r.Rank, r.SetBy, time.Now().UnixMilli())
 	return err
+}
+
+// Session is a recorded stream: real events with no gap longer than the split gap.
+// ponytail: gap-based; switch to stream.online/offline events once those are subscribed.
+type Session struct {
+	Start, End time.Time
+	Events     int
+}
+
+// Sessions lists recorded sessions, newest first.
+func (s *Store) Sessions(gap time.Duration) ([]Session, error) {
+	rows, err := s.db.Query(`SELECT ts FROM events WHERE simulated = 0 ORDER BY ts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		var ms int64
+		if err := rows.Scan(&ms); err != nil {
+			return nil, err
+		}
+		ts := time.UnixMilli(ms)
+		if n := len(out); n > 0 && ts.Sub(out[n-1].End) <= gap {
+			out[n-1].End = ts
+			out[n-1].Events++
+		} else {
+			out = append(out, Session{Start: ts, End: ts, Events: 1})
+		}
+	}
+	slices.Reverse(out)
+	return out, rows.Err()
+}
+
+// RealEvents returns the non-simulated events from start to end inclusive, oldest first.
+func (s *Store) RealEvents(start, end time.Time) ([]event.Event, error) {
+	rows, err := s.db.Query(`SELECT id, type, source, ts, data FROM events
+		WHERE simulated = 0 AND ts BETWEEN ? AND ? ORDER BY ts`, start.UnixMilli(), end.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []event.Event
+	for rows.Next() {
+		var ev event.Event
+		var ms int64
+		if err := rows.Scan(&ev.ID, &ev.Type, &ev.Source, &ms, &ev.Data); err != nil {
+			return nil, err
+		}
+		ev.TS = time.UnixMilli(ms).UTC()
+		out = append(out, ev)
+	}
+	return out, rows.Err()
 }
