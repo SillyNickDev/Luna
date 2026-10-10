@@ -9,11 +9,15 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"syscall"
+	"time"
 
 	"luna/internal/bus"
 	"luna/internal/config"
+	"luna/internal/guard"
 	"luna/internal/store"
+	"luna/internal/twitch"
 )
 
 func runDaemon(p paths) error {
@@ -54,6 +58,19 @@ func runDaemon(p paths) error {
 	defer stop()
 	go func() { <-ctx.Done(); ln.Close() }()
 
+	g := guard.New(cfg.Get)
+	// ponytail: client ID and token are read once; changing them needs a restart.
+	if tw, err := twitch.NewClient(cfg.Get().Twitch.ClientID, p.tokens); err != nil {
+		slog.Warn("running without twitch", "err", err)
+	} else {
+		g.Live = tw.SendChat
+		go func() {
+			if err := tw.Run(ctx, b.Publish); err != nil {
+				slog.Error("twitch stopped", "err", err)
+			}
+		}()
+	}
+
 	slog.Info("luna running", "config", p.config, "data", p.data)
 	serve(ln, func(req request) (string, error) {
 		switch req.Cmd {
@@ -64,6 +81,13 @@ func runDaemon(p paths) error {
 			}
 			b.Publish(ev)
 			return fmt.Sprintf("fired %s (%s)", ev.Type, ev.ID), nil
+		case "chat":
+			cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			if err := g.Chat(cctx, strings.Join(req.Args, " "), false); err != nil {
+				return "", err
+			}
+			return "sent", nil
 		case "reload":
 			if err := cfg.Reload(); err != nil {
 				return "", fmt.Errorf("kept the last good config: %w", err)

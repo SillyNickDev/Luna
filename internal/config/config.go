@@ -17,8 +17,7 @@ import (
 
 type Config struct {
 	Twitch struct {
-		Channel  string `toml:"channel"`
-		ClientID string `toml:"client_id"`
+		ClientID string `toml:"client_id"` // Luna's public Twitch app; override to use your own
 	} `toml:"twitch"`
 	Chat struct {
 		RateLimit int              `toml:"rate_limit"` // messages per 30 s
@@ -33,12 +32,16 @@ type Config struct {
 
 func Default() *Config {
 	c := &Config{MemoryLimitMiB: 48}
+	c.Twitch.ClientID = "9ye8kbj2uo87wxll4l9qsuoowt7yub"
 	c.Chat.RateLimit = 20
 	return c
 }
 
 func (c *Config) Validate() error {
 	var errs []error
+	if c.Twitch.ClientID == "" {
+		errs = append(errs, errors.New("twitch.client_id can't be empty"))
+	}
 	if c.Chat.RateLimit < 1 || c.Chat.RateLimit > 100 {
 		errs = append(errs, fmt.Errorf("chat.rate_limit must be 1-100, got %d", c.Chat.RateLimit))
 	}

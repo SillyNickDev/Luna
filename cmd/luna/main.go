@@ -15,10 +15,13 @@ const usageText = `usage: luna [--config <dir>] <command>
   run                   start the daemon
   sim <event> [flags]   fire a simulated event (luna sim --list)
   reload                re-read config; an invalid file keeps the last good one
+  auth login|status|logout
+                        Twitch login for the broadcaster account
+  chat say <text>       send a chat message through the output guard
   config validate       check luna.toml without applying it
 `
 
-type paths struct{ config, data, sock string }
+type paths struct{ config, data, sock, tokens string }
 
 func main() {
 	fs := flag.NewFlagSet("luna", flag.ExitOnError)
@@ -41,6 +44,10 @@ func main() {
 			}
 		case args[0] == "sim", args[0] == "reload":
 			err = call(p, request{Cmd: args[0], Args: args[1:]})
+		case args[0] == "auth" && len(args) == 2:
+			err = auth(p, args[1])
+		case args[0] == "chat" && len(args) > 2 && args[1] == "say":
+			err = call(p, request{Cmd: "chat", Args: args[2:]})
 		case args[0] == "config" && len(args) == 2 && args[1] == "validate":
 			if _, err = config.Load(p.config); err == nil {
 				fmt.Println("config ok:", p.config)
@@ -85,5 +92,6 @@ func resolvePaths(confDir string) (paths, error) {
 		config: filepath.Join(confDir, "luna.toml"),
 		data:   dataDir,
 		sock:   filepath.Join(dataDir, "luna.sock"),
+		tokens: filepath.Join(dataDir, "tokens.json"),
 	}, nil
 }
