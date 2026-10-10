@@ -1,0 +1,5 @@
+luna
+luna.exe
+*.db
+*.db-*
+*.sock
