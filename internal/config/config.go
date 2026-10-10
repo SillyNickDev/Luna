@@ -2,15 +2,19 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sync/atomic"
+	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/fsnotify/fsnotify"
 
 	"luna/internal/perms"
 )
@@ -114,5 +118,41 @@ func (h *Holder) Reload() error {
 		return err
 	}
 	h.cur.Store(c)
+	return nil
+}
+
+// Watch reloads when the config file changes, until ctx ends. It watches the
+// directory, since editors often save by replacing the file. done gets each reload's result.
+func (h *Holder) Watch(ctx context.Context, done func(error)) error {
+	dir := filepath.Dir(h.path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	if err := w.Add(dir); err != nil {
+		w.Close()
+		return err
+	}
+	go func() {
+		defer w.Close()
+		var settle <-chan time.Time // editors write in bursts; reload once they stop
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev := <-w.Events:
+				if filepath.Clean(ev.Name) == filepath.Clean(h.path) {
+					settle = time.After(200 * time.Millisecond)
+				}
+			case err := <-w.Errors:
+				done(err)
+			case <-settle:
+				done(h.Reload())
+			}
+		}
+	}()
 	return nil
 }

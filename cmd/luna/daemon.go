@@ -65,6 +65,18 @@ func runDaemon(p paths) error {
 	defer stop()
 	go func() { <-ctx.Done(); ln.Close() }()
 
+	onReload := func(err error) {
+		if err != nil {
+			slog.Error("config not reloaded; keeping the last good one", "err", err)
+			return
+		}
+		debug.SetMemoryLimit(int64(cfg.Get().MemoryLimitMiB) << 20)
+		slog.Info("config reloaded")
+	}
+	if err := cfg.Watch(ctx, onReload); err != nil {
+		slog.Warn("config file watching off; use luna reload", "err", err)
+	}
+
 	g := guard.New(cfg.Get)
 	tw := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
 
@@ -90,10 +102,11 @@ func runDaemon(p paths) error {
 			defer cancel()
 			return permsCmd(pctx, req.Args, ranks, st, tw, policyFrom(cfg.Get()))
 		case "reload":
-			if err := cfg.Reload(); err != nil {
+			err := cfg.Reload()
+			onReload(err)
+			if err != nil {
 				return "", fmt.Errorf("kept the last good config: %w", err)
 			}
-			debug.SetMemoryLimit(int64(cfg.Get().MemoryLimitMiB) << 20)
 			return "config reloaded", nil
 		}
 		return "", fmt.Errorf("unknown command %q", req.Cmd)
