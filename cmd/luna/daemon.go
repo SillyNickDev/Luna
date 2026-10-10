@@ -127,7 +127,8 @@ func runDaemon(p paths) error {
 func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) *twitch.Client {
 	store := secrets.Open(p.data)
 	if !store.UsesKeyring() {
-		slog.Warn("no OS keyring; twitch tokens are in encrypted files under the data dir")
+		slog.Warn("OS keyring unreachable from this session; using encrypted token files instead. " +
+			"Logins saved to the keyring from a desktop session aren't visible here: log in from this session or start luna from the desktop")
 	}
 	bc, err := twitch.NewClient(clientID, store, "broadcaster")
 	if err != nil {
