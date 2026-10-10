@@ -43,9 +43,32 @@ type session struct {
 	keepalive time.Duration
 }
 
-// Run keeps one EventSub WebSocket open and publishes Twitch events until ctx ends.
-// It returns early only with ErrAuth, when retrying can't help.
-func (c *Client) Run(ctx context.Context, publish func(event.Event)) error {
+// Sub is one EventSub subscription.
+type Sub struct {
+	Type, Version string
+	Condition     map[string]string
+}
+
+// ChannelSubs are the broadcaster's channel events, made with the broadcaster's token.
+func ChannelSubs(b string) []Sub {
+	return []Sub{
+		{"channel.follow", "2", map[string]string{"broadcaster_user_id": b, "moderator_user_id": b}},
+		{"channel.subscribe", "1", map[string]string{"broadcaster_user_id": b}},
+		{"channel.cheer", "1", map[string]string{"broadcaster_user_id": b}},
+		{"channel.raid", "1", map[string]string{"to_broadcaster_user_id": b}},
+		{"channel.channel_points_custom_reward_redemption.add", "1", map[string]string{"broadcaster_user_id": b}},
+	}
+}
+
+// ChatSub reads broadcaster b's chat as reader, made with the reader's token.
+func ChatSub(b, reader string) Sub {
+	return Sub{"channel.chat.message", "1", map[string]string{"broadcaster_user_id": b, "user_id": reader}}
+}
+
+// Run keeps one EventSub WebSocket open for subs and publishes events until ctx ends.
+// Each account gets its own connection, since every subscription on a session must
+// be made with that account's token. It returns early only with ErrAuth.
+func (c *Client) Run(ctx context.Context, subs []Sub, publish func(event.Event)) error {
 	go c.validateHourly(ctx)
 	seen := newDedupe(1024)
 	backoff := time.Second
@@ -53,10 +76,10 @@ func (c *Client) Run(ctx context.Context, publish func(event.Event)) error {
 	for {
 		var err error
 		if s == nil {
-			s, err = c.connect(ctx, wsURL, true)
+			s, err = c.connect(ctx, wsURL, subs)
 		}
 		if err == nil {
-			slog.Info("twitch connected", "user_id", c.userID)
+			slog.Info("twitch connected", "account", c.account, "user_id", c.userID)
 			started := time.Now()
 			s, err = c.read(ctx, s, seen, publish)
 			if s != nil {
@@ -72,7 +95,7 @@ func (c *Client) Run(ctx context.Context, publish func(event.Event)) error {
 		if errors.Is(err, ErrAuth) {
 			return err
 		}
-		slog.Warn("twitch disconnected, retrying", "err", err, "in", backoff)
+		slog.Warn("twitch disconnected, retrying", "account", c.account, "err", err, "in", backoff)
 		select {
 		case <-time.After(backoff):
 		case <-ctx.Done():
@@ -82,8 +105,8 @@ func (c *Client) Run(ctx context.Context, publish func(event.Event)) error {
 	}
 }
 
-// connect dials, waits for the welcome, and creates subscriptions on a fresh session.
-func (c *Client) connect(ctx context.Context, u string, subscribe bool) (*session, error) {
+// connect dials, waits for the welcome, and creates subs (none after a reconnect, where they carry over).
+func (c *Client) connect(ctx context.Context, u string, subs []Sub) (*session, error) {
 	if pu, err := url.Parse(u); err != nil || pu.Scheme != "wss" || pu.Host != "eventsub.wss.twitch.tv" {
 		return nil, fmt.Errorf("refusing eventsub url %q", u)
 	}
@@ -102,8 +125,8 @@ func (c *Client) connect(ctx context.Context, u string, subscribe bool) (*sessio
 	if err == nil && m.Metadata.MessageType != "session_welcome" {
 		err = fmt.Errorf("expected session_welcome, got %q", m.Metadata.MessageType)
 	}
-	if err == nil && subscribe {
-		err = c.subscribeAll(ctx, m.Payload.Session.ID)
+	if err == nil {
+		err = c.subscribe(ctx, m.Payload.Session.ID, subs)
 	}
 	if err != nil {
 		conn.CloseNow()
@@ -141,7 +164,7 @@ func (c *Client) read(ctx context.Context, s *session, seen *dedupe, publish fun
 			}
 		case "session_reconnect":
 			// ponytail: events landing on the old socket while the new one says welcome are dropped; drain it if that shows up.
-			next, err := c.connect(ctx, m.Payload.Session.ReconnectURL, false)
+			next, err := c.connect(ctx, m.Payload.Session.ReconnectURL, nil)
 			s.Close(websocket.StatusNormalClosure, "")
 			return next, err
 		case "revocation":
@@ -150,29 +173,17 @@ func (c *Client) read(ctx context.Context, s *session, seen *dedupe, publish fun
 	}
 }
 
-func (c *Client) subscribeAll(ctx context.Context, sessionID string) error {
-	b := c.userID
-	subs := []struct {
-		typ, version string
-		cond         map[string]string
-	}{
-		{"channel.chat.message", "1", map[string]string{"broadcaster_user_id": b, "user_id": b}},
-		{"channel.follow", "2", map[string]string{"broadcaster_user_id": b, "moderator_user_id": b}},
-		{"channel.subscribe", "1", map[string]string{"broadcaster_user_id": b}},
-		{"channel.cheer", "1", map[string]string{"broadcaster_user_id": b}},
-		{"channel.raid", "1", map[string]string{"to_broadcaster_user_id": b}},
-		{"channel.channel_points_custom_reward_redemption.add", "1", map[string]string{"broadcaster_user_id": b}},
-	}
+func (c *Client) subscribe(ctx context.Context, sessionID string, subs []Sub) error {
 	for _, s := range subs {
 		err := c.helix(ctx, "POST", "/eventsub/subscriptions", map[string]any{
-			"type": s.typ, "version": s.version, "condition": s.cond,
+			"type": s.Type, "version": s.Version, "condition": s.Condition,
 			"transport": map[string]string{"method": "websocket", "session_id": sessionID},
 		}, nil)
 		if errors.Is(err, ErrAuth) {
 			return err
 		}
 		if err != nil { // e.g. points/subs on a channel that isn't affiliate yet
-			slog.Warn("twitch subscription failed", "type", s.typ, "err", err)
+			slog.Warn("twitch subscription failed", "type", s.Type, "err", err)
 		}
 	}
 	return nil

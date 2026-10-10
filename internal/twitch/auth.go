@@ -10,10 +10,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"luna/internal/secrets"
 )
 
 const (
@@ -21,14 +21,18 @@ const (
 	helixURL = "https://api.twitch.tv/helix"
 )
 
-// Scopes the broadcaster account is asked for, one per subscribed event plus chat.
-var Scopes = []string{
-	"user:read:chat", "user:write:chat", "moderator:read:followers",
-	"channel:read:subscriptions", "bits:read", "channel:read:redemptions",
+// Scopes per account. The broadcaster's cover each subscribed event, chat when there's
+// no bot account, and channel:bot so a bot account may chat without being a mod.
+var Scopes = map[string][]string{
+	"broadcaster": {
+		"user:read:chat", "user:write:chat", "moderator:read:followers",
+		"channel:read:subscriptions", "bits:read", "channel:read:redemptions", "channel:bot",
+	},
+	"bot": {"user:read:chat", "user:write:chat", "user:bot"},
 }
 
 // ErrAuth means the token was rejected and can't be refreshed: log in again.
-var ErrAuth = errors.New("twitch rejected the login; run: luna auth login")
+var ErrAuth = errors.New("twitch rejected the login; run: luna auth login [broadcaster|bot]")
 
 type APIError struct {
 	Status  int
@@ -110,8 +114,8 @@ func newToken(ctx context.Context, clientID string, tr tokenResp) (*Token, error
 }
 
 // DeviceLogin runs Twitch's device code flow; show tells the user where to approve.
-func DeviceLogin(ctx context.Context, clientID string, show func(uri, code string)) (*Token, error) {
-	scopes := strings.Join(Scopes, " ")
+func DeviceLogin(ctx context.Context, clientID string, scopes []string, show func(uri, code string)) (*Token, error) {
+	scope := strings.Join(scopes, " ")
 	var dc struct {
 		DeviceCode string `json:"device_code"`
 		ExpiresIn  int    `json:"expires_in"`
@@ -119,7 +123,7 @@ func DeviceLogin(ctx context.Context, clientID string, show func(uri, code strin
 		UserCode   string `json:"user_code"`
 		URI        string `json:"verification_uri"`
 	}
-	if err := postForm(ctx, idURL+"/device", url.Values{"client_id": {clientID}, "scopes": {scopes}}, &dc); err != nil {
+	if err := postForm(ctx, idURL+"/device", url.Values{"client_id": {clientID}, "scopes": {scope}}, &dc); err != nil {
 		return nil, err
 	}
 	show(dc.URI, dc.UserCode)
@@ -134,7 +138,7 @@ func DeviceLogin(ctx context.Context, clientID string, show func(uri, code strin
 		}
 		var tr tokenResp
 		err := postForm(ctx, idURL+"/token", url.Values{
-			"client_id": {clientID}, "scopes": {scopes}, "device_code": {dc.DeviceCode},
+			"client_id": {clientID}, "scopes": {scope}, "device_code": {dc.DeviceCode},
 			"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"},
 		}, &tr)
 		var ae *APIError
@@ -172,12 +176,10 @@ func Revoke(ctx context.Context, clientID string, t *Token) error {
 	return postForm(ctx, idURL+"/revoke", url.Values{"client_id": {clientID}, "token": {t.Access}}, nil)
 }
 
-// ponytail: owner-only file, no OS keyring or encryption yet (Security tab); add the keyring
-// with `luna doctor`. On Windows the 0600 is a no-op and %LOCALAPPDATA%'s per-user ACL applies.
-func LoadToken(path string) (*Token, error) {
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, errors.New("not logged in to Twitch; run: luna auth login")
+func LoadToken(s *secrets.Store, account string) (*Token, error) {
+	b, err := s.Get(account)
+	if errors.Is(err, secrets.ErrNotFound) {
+		return nil, fmt.Errorf("%s account not logged in to Twitch; run: luna auth login %s", account, account)
 	}
 	if err != nil {
 		return nil, err
@@ -186,30 +188,10 @@ func LoadToken(path string) (*Token, error) {
 	return &t, json.Unmarshal(b, &t)
 }
 
-// SaveToken writes atomically: temp file, then rename.
-func SaveToken(path string, t *Token) error {
+func SaveToken(s *secrets.Store, account string, t *Token) error {
 	b, err := json.Marshal(t)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".tokens-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if err := f.Chmod(0o600); err != nil && !errors.Is(err, errors.ErrUnsupported) {
-		f.Close()
-		return err
-	}
-	if _, err := f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), path)
+	return s.Set(account, b)
 }

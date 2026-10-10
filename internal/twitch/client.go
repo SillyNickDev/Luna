@@ -10,24 +10,28 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"luna/internal/secrets"
 )
 
-// Client acts as the broadcaster account.
-// ponytail: one account; the separate bot account (Security tab: split accounts) comes with `luna auth login bot`.
+// Client acts as one Twitch account (broadcaster or bot).
 type Client struct {
-	clientID, path, userID string
+	clientID, account, userID string
+	store                     *secrets.Store
 
 	mu  sync.Mutex
 	tok *Token
 }
 
-func NewClient(clientID, tokenPath string) (*Client, error) {
-	tok, err := LoadToken(tokenPath)
+func NewClient(clientID string, store *secrets.Store, account string) (*Client, error) {
+	tok, err := LoadToken(store, account)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{clientID: clientID, path: tokenPath, userID: tok.UserID, tok: tok}, nil
+	return &Client{clientID: clientID, account: account, userID: tok.UserID, store: store, tok: tok}, nil
 }
+
+func (c *Client) UserID() string { return c.userID }
 
 // token returns an access token, refreshing it when close to expiry or when forced after a 401.
 func (c *Client) token(ctx context.Context, force bool) (string, error) {
@@ -38,8 +42,8 @@ func (c *Client) token(ctx context.Context, force bool) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if err := SaveToken(c.path, t); err != nil {
-			slog.Error("saving refreshed twitch token failed", "err", err)
+		if err := SaveToken(c.store, c.account, t); err != nil {
+			slog.Error("saving refreshed twitch token failed", "account", c.account, "err", err)
 		}
 		c.tok = t
 	}
@@ -75,8 +79,8 @@ func (c *Client) helix(ctx context.Context, method, path string, body, out any) 
 	}
 }
 
-// SendChat posts a message to the broadcaster's chat. Callers go through the output guard.
-func (c *Client) SendChat(ctx context.Context, text string) error {
+// SendChat posts text as this account in broadcasterID's chat. Callers go through the output guard.
+func (c *Client) SendChat(ctx context.Context, broadcasterID, text string) error {
 	var out struct {
 		Data []struct {
 			IsSent     bool `json:"is_sent"`
@@ -86,7 +90,7 @@ func (c *Client) SendChat(ctx context.Context, text string) error {
 		} `json:"data"`
 	}
 	err := c.helix(ctx, "POST", "/chat/messages", map[string]string{
-		"broadcaster_id": c.userID, "sender_id": c.userID, "message": text,
+		"broadcaster_id": broadcasterID, "sender_id": c.userID, "message": text,
 	}, &out)
 	if err != nil {
 		return err
@@ -117,7 +121,7 @@ func (c *Client) validateHourly(ctx context.Context) {
 		var ae *APIError
 		if _, err := newToken(ctx, c.clientID, tr); errors.As(err, &ae) && ae.Status == 401 {
 			if _, err := c.token(ctx, true); err != nil {
-				slog.Error("twitch token invalid", "err", err)
+				slog.Error("twitch token invalid", "account", c.account, "err", err)
 			}
 		}
 	}

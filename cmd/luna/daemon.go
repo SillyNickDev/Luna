@@ -15,7 +15,9 @@ import (
 
 	"luna/internal/bus"
 	"luna/internal/config"
+	"luna/internal/event"
 	"luna/internal/guard"
+	"luna/internal/secrets"
 	"luna/internal/store"
 	"luna/internal/twitch"
 )
@@ -59,17 +61,7 @@ func runDaemon(p paths) error {
 	go func() { <-ctx.Done(); ln.Close() }()
 
 	g := guard.New(cfg.Get)
-	// ponytail: client ID and token are read once; changing them needs a restart.
-	if tw, err := twitch.NewClient(cfg.Get().Twitch.ClientID, p.tokens); err != nil {
-		slog.Warn("running without twitch", "err", err)
-	} else {
-		g.Live = tw.SendChat
-		go func() {
-			if err := tw.Run(ctx, b.Publish); err != nil {
-				slog.Error("twitch stopped", "err", err)
-			}
-		}()
-	}
+	startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, b.Publish)
 
 	slog.Info("luna running", "config", p.config, "data", p.data)
 	serve(ln, func(req request) (string, error) {
@@ -103,4 +95,37 @@ func runDaemon(p paths) error {
 	logSub.Close()
 	<-logged // flush the event log before the database closes
 	return nil
+}
+
+// startTwitch connects the broadcaster account and, if logged in, the bot account,
+// which then reads and sends chat. Without a broadcaster login Luna runs offline.
+// ponytail: client ID and tokens are read once; changing them needs a restart.
+func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) {
+	store := secrets.Open(p.data)
+	if !store.UsesKeyring() {
+		slog.Warn("no OS keyring; twitch tokens are in encrypted files under the data dir")
+	}
+	bc, err := twitch.NewClient(clientID, store, "broadcaster")
+	if err != nil {
+		slog.Warn("running without twitch", "err", err)
+		return
+	}
+	run := func(c *twitch.Client, subs []twitch.Sub) {
+		go func() {
+			if err := c.Run(ctx, subs, publish); err != nil {
+				slog.Error("twitch stopped", "err", err)
+			}
+		}()
+	}
+	b := bc.UserID()
+	chatter := bc
+	if bot, err := twitch.NewClient(clientID, store, "bot"); err == nil {
+		chatter = bot
+		run(bot, []twitch.Sub{twitch.ChatSub(b, bot.UserID())})
+		run(bc, twitch.ChannelSubs(b))
+	} else {
+		slog.Info("no bot account; chatting as the broadcaster", "hint", "luna auth login bot")
+		run(bc, append(twitch.ChannelSubs(b), twitch.ChatSub(b, b)))
+	}
+	g.Live = func(ctx context.Context, text string) error { return chatter.SendChat(ctx, b, text) }
 }
