@@ -18,6 +18,8 @@ const usageText = `usage: luna [--config <dir>] <command>
   auth login [broadcaster|bot]
   auth status | logout [broadcaster|bot]
                         Twitch logins; the bot account is optional
+  perms show | set <user> <rank> | check <user> <capability>
+                        ranks: viewer, moderator, luna-mod, head-mod
   chat say <text>       send a chat message through the output guard
   config validate       check luna.toml without applying it
 `
@@ -43,7 +45,7 @@ func main() {
 			for _, s := range simList {
 				fmt.Printf("  %-7s %-26s luna sim %s %s\n", s.name, s.typ, s.name, s.usage)
 			}
-		case args[0] == "sim", args[0] == "reload":
+		case args[0] == "sim", args[0] == "reload", args[0] == "perms":
 			err = call(p, request{Cmd: args[0], Args: args[1:]})
 		case args[0] == "auth" && len(args) >= 2:
 			err = auth(p, args[1], args[2:])

@@ -27,6 +27,7 @@ var Scopes = map[string][]string{
 	"broadcaster": {
 		"user:read:chat", "user:write:chat", "moderator:read:followers",
 		"channel:read:subscriptions", "bits:read", "channel:read:redemptions", "channel:bot",
+		"moderation:read",
 	},
 	"bot": {"user:read:chat", "user:write:chat", "user:bot"},
 }

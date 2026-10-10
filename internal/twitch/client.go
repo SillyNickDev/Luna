@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -51,9 +52,12 @@ func (c *Client) token(ctx context.Context, force bool) (string, error) {
 }
 
 func (c *Client) helix(ctx context.Context, method, path string, body, out any) error {
-	b, err := json.Marshal(body)
-	if err != nil {
-		return err
+	var b []byte
+	if body != nil {
+		var err error
+		if b, err = json.Marshal(body); err != nil {
+			return err
+		}
 	}
 	for attempt := 0; ; attempt++ {
 		tok, err := c.token(ctx, attempt > 0)
@@ -125,4 +129,32 @@ func (c *Client) validateHourly(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// UserByLogin looks up a Twitch user's ID.
+func (c *Client) UserByLogin(ctx context.Context, login string) (id string, err error) {
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := c.helix(ctx, "GET", "/users?login="+url.QueryEscape(login), nil, &out); err != nil {
+		return "", err
+	}
+	if len(out.Data) == 0 {
+		return "", fmt.Errorf("no twitch user %q", login)
+	}
+	return out.Data[0].ID, nil
+}
+
+// IsModerator reports whether userID is a moderator in this (broadcaster) account's channel.
+func (c *Client) IsModerator(ctx context.Context, userID string) (bool, error) {
+	var out struct {
+		Data []struct{} `json:"data"`
+	}
+	q := "/moderation/moderators?broadcaster_id=" + url.QueryEscape(c.userID) + "&user_id=" + url.QueryEscape(userID)
+	if err := c.helix(ctx, "GET", q, nil, &out); err != nil {
+		return false, err
+	}
+	return len(out.Data) > 0, nil
 }

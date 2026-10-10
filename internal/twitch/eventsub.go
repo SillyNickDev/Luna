@@ -57,6 +57,8 @@ func ChannelSubs(b string) []Sub {
 		{"channel.cheer", "1", map[string]string{"broadcaster_user_id": b}},
 		{"channel.raid", "1", map[string]string{"to_broadcaster_user_id": b}},
 		{"channel.channel_points_custom_reward_redemption.add", "1", map[string]string{"broadcaster_user_id": b}},
+		{"channel.moderator.add", "1", map[string]string{"broadcaster_user_id": b}},
+		{"channel.moderator.remove", "1", map[string]string{"broadcaster_user_id": b}},
 	}
 }
 
@@ -251,6 +253,10 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 		typ, data = "twitch.channel.raid", map[string]any{"user": user(e.FromID, e.FromLogin), "viewers": e.Viewers}
 	case "channel.channel_points_custom_reward_redemption.add":
 		typ, data = "twitch.channel.redeem", map[string]any{"user": user(e.UserID, e.UserLogin), "reward": e.Reward.Title, "input": e.UserInput}
+	case "channel.moderator.add":
+		typ, data = "twitch.channel.moderator.add", map[string]any{"user": user(e.UserID, e.UserLogin)}
+	case "channel.moderator.remove":
+		typ, data = "twitch.channel.moderator.remove", map[string]any{"user": user(e.UserID, e.UserLogin)}
 	default:
 		return event.Event{}, fmt.Errorf("unhandled subscription type %q", subType)
 	}

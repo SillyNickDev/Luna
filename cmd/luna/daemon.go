@@ -41,7 +41,12 @@ func runDaemon(p paths) error {
 	}
 	defer st.Close()
 
+	ranks, err := loadRanks(st)
+	if err != nil {
+		return fmt.Errorf("database: %w", err)
+	}
 	b := bus.New()
+	publish := withRanks(ranks, st, b.Publish)
 	logSub := b.Subscribe(4096)
 	logged := make(chan struct{})
 	go func() { st.Log(logSub.C); close(logged) }()
@@ -61,7 +66,7 @@ func runDaemon(p paths) error {
 	go func() { <-ctx.Done(); ln.Close() }()
 
 	g := guard.New(cfg.Get)
-	startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, b.Publish)
+	tw := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
 
 	slog.Info("luna running", "config", p.config, "data", p.data)
 	serve(ln, func(req request) (string, error) {
@@ -71,7 +76,7 @@ func runDaemon(p paths) error {
 			if err != nil {
 				return "", err
 			}
-			b.Publish(ev)
+			publish(ev)
 			return fmt.Sprintf("fired %s (%s)", ev.Type, ev.ID), nil
 		case "chat":
 			cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -80,6 +85,10 @@ func runDaemon(p paths) error {
 				return "", err
 			}
 			return "sent", nil
+		case "perms":
+			pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			return permsCmd(pctx, req.Args, ranks, st, tw, policyFrom(cfg.Get()))
 		case "reload":
 			if err := cfg.Reload(); err != nil {
 				return "", fmt.Errorf("kept the last good config: %w", err)
@@ -100,7 +109,7 @@ func runDaemon(p paths) error {
 // startTwitch connects the broadcaster account and, if logged in, the bot account,
 // which then reads and sends chat. Without a broadcaster login Luna runs offline.
 // ponytail: client ID and tokens are read once; changing them needs a restart.
-func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) {
+func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) *twitch.Client {
 	store := secrets.Open(p.data)
 	if !store.UsesKeyring() {
 		slog.Warn("no OS keyring; twitch tokens are in encrypted files under the data dir")
@@ -108,7 +117,7 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 	bc, err := twitch.NewClient(clientID, store, "broadcaster")
 	if err != nil {
 		slog.Warn("running without twitch", "err", err)
-		return
+		return nil
 	}
 	run := func(c *twitch.Client, subs []twitch.Sub) {
 		go func() {
@@ -128,4 +137,5 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 		run(bc, append(twitch.ChannelSubs(b), twitch.ChatSub(b, b)))
 	}
 	g.Live = func(ctx context.Context, text string) error { return chatter.SendChat(ctx, b, text) }
+	return bc
 }

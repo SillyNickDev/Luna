@@ -4,7 +4,9 @@ package perms
 
 import (
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 )
 
 type Rank int
@@ -123,4 +125,44 @@ func (p *Policy) CanOverride(userID string, r Rank, a Action) error {
 	default:
 		return fmt.Errorf("made by a %s", a.ActorRank)
 	}
+}
+
+// Ranks resolves a chatter's rank from their verified Twitch badges plus the
+// ranks Luna keeps itself (head mods, Luna mods).
+type Ranks struct {
+	mu   sync.RWMutex
+	byID map[string]Rank
+}
+
+func NewRanks(stored map[string]Rank) *Ranks { return &Ranks{byID: stored} }
+
+func (r *Ranks) Get(id string) Rank {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.byID[id]
+}
+
+// Set records a Luna-kept rank; Viewer or Moderator removes it, since those come from Twitch.
+func (r *Ranks) Set(id string, rank Rank) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if rank <= Moderator {
+		delete(r.byID, id)
+	} else {
+		r.byID[id] = rank
+	}
+}
+
+// Resolve applies "Twitch is the floor": a kept rank only counts while Twitch still shows them as a mod.
+func (r *Ranks) Resolve(id string, roles []string) Rank {
+	switch {
+	case slices.Contains(roles, "broadcaster"):
+		return Broadcaster
+	case !slices.Contains(roles, "moderator") && !slices.Contains(roles, "lead_moderator"):
+		return Viewer
+	}
+	if kept := r.Get(id); kept > Moderator && kept < Broadcaster {
+		return kept
+	}
+	return Moderator
 }

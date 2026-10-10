@@ -47,3 +47,24 @@ func TestCan(t *testing.T) {
 		t.Error("lockdown didn't freeze luna mods / user grants")
 	}
 }
+
+func TestResolve(t *testing.T) {
+	r := NewRanks(map[string]Rank{"h": HeadMod, "l": LunaMod})
+	cases := []struct {
+		id    string
+		roles []string
+		want  Rank
+	}{
+		{"b", []string{"broadcaster", "sub"}, Broadcaster},
+		{"h", []string{"moderator"}, HeadMod},
+		{"h", []string{"sub"}, Viewer}, // unmodded on Twitch: kept rank doesn't count
+		{"l", []string{"moderator", "vip"}, LunaMod},
+		{"m", []string{"moderator"}, Moderator},
+		{"v", nil, Viewer},
+	}
+	for _, c := range cases {
+		if got := r.Resolve(c.id, c.roles); got != c.want {
+			t.Errorf("Resolve(%s, %v) = %s, want %s", c.id, c.roles, got, c.want)
+		}
+	}
+}

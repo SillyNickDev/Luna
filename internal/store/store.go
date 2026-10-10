@@ -20,7 +20,14 @@ CREATE TABLE IF NOT EXISTS events (
 	simulated INTEGER NOT NULL,
 	data      BLOB NOT NULL
 );
-CREATE INDEX IF NOT EXISTS events_ts ON events(ts);`
+CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+CREATE TABLE IF NOT EXISTS ranks (
+	user_id TEXT PRIMARY KEY,
+	login   TEXT NOT NULL,
+	rank    TEXT NOT NULL,
+	set_by  TEXT NOT NULL,
+	updated INTEGER NOT NULL
+);`
 
 type Store struct {
 	db     *sql.DB
@@ -93,4 +100,41 @@ func (s *Store) write(batch []event.Event) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// RankRow is a rank Luna keeps itself (head mod, Luna mod); the rest come from Twitch.
+type RankRow struct {
+	UserID, Login, Rank, SetBy string
+	Updated                    time.Time
+}
+
+func (s *Store) Ranks() ([]RankRow, error) {
+	rows, err := s.db.Query(`SELECT user_id, login, rank, set_by, updated FROM ranks ORDER BY rank DESC, login`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RankRow
+	for rows.Next() {
+		var r RankRow
+		var ms int64
+		if err := rows.Scan(&r.UserID, &r.Login, &r.Rank, &r.SetBy, &ms); err != nil {
+			return nil, err
+		}
+		r.Updated = time.UnixMilli(ms)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// SetRank stores r, or deletes the row when r.Rank is empty.
+func (s *Store) SetRank(r RankRow) error {
+	if r.Rank == "" {
+		_, err := s.db.Exec(`DELETE FROM ranks WHERE user_id = ?`, r.UserID)
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO ranks (user_id, login, rank, set_by, updated) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET login = excluded.login, rank = excluded.rank, set_by = excluded.set_by, updated = excluded.updated`,
+		r.UserID, r.Login, r.Rank, r.SetBy, time.Now().UnixMilli())
+	return err
 }
