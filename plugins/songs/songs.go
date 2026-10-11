@@ -32,12 +32,13 @@ type Settings struct {
 
 // Request is a song a viewer asked for that hasn't finished yet.
 type Request struct {
-	UserID  string `json:"user_id"`
-	Login   string `json:"login"`
-	TrackID string `json:"track_id"`
-	Title   string `json:"title"`
-	Paid    int64  `json:"paid,omitempty"`
-	Wrong   bool   `json:"wrong,omitempty"` // !wrongsong: skip it when it comes up
+	UserID  string    `json:"user_id"`
+	Login   string    `json:"login"`
+	TrackID string    `json:"track_id"`
+	Title   string    `json:"title"`
+	Paid    int64     `json:"paid,omitempty"`
+	At      time.Time `json:"at"`
+	Wrong   bool      `json:"wrong,omitempty"` // !wrongsong: skip it when it comes up
 }
 
 const (
@@ -71,7 +72,12 @@ func New() *luna.Bot {
 		return nil
 	})
 	bot.On("twitch.stream.online", func(*luna.Ctx, *luna.Event) error { s.setLive(true); return nil })
-	bot.On("twitch.stream.offline", func(*luna.Ctx, *luna.Event) error { s.setLive(false); return nil })
+	bot.On("twitch.stream.offline", func(ctx *luna.Ctx, _ *luna.Event) error {
+		s.mu.Lock()
+		s.live, s.pending = false, nil // Spotify's queue doesn't outlive the session; neither do the requests
+		s.mu.Unlock()
+		return s.save(ctx)
+	})
 	bot.On("twitch.channel.redeem", func(ctx *luna.Ctx, ev *luna.Event) error {
 		if s.cfg.Reward == "" || !strings.EqualFold(ev.Str("reward"), s.cfg.Reward) {
 			return nil
@@ -100,7 +106,7 @@ func New() *luna.Bot {
 		func(ctx *luna.Ctx, _ luna.Args) (any, error) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			return slices.Clone(s.pending), nil
+			return append([]Request{}, s.pending...), nil
 		})
 	return bot
 }
@@ -169,8 +175,11 @@ func (s *songs) request(ctx *luna.Ctx, u *luna.User, query string, charge bool) 
 		s.refund(ctx, u.ID, u.Login, paid)
 		return "Spotify refused: " + reason(err) // most often: no active player, or not Premium
 	}
+	if ctx.Event != nil && ctx.Event.Simulated {
+		return fmt.Sprintf("🎵 Added %s (simulated: not queued on Spotify).", title) // nothing to wait for
+	}
 	s.mu.Lock()
-	s.pending = append(s.pending, Request{UserID: u.ID, Login: u.Login, TrackID: t.ID, Title: title, Paid: paid})
+	s.pending = append(s.pending, Request{UserID: u.ID, Login: u.Login, TrackID: t.ID, Title: title, Paid: paid, At: s.bot.Now()})
 	n := len(s.pending)
 	s.mu.Unlock()
 	if err := s.save(ctx); err != nil {
@@ -262,8 +271,16 @@ func (s *songs) song(ctx *luna.Ctx, _ []string) error {
 // watch notices when a requested song starts: it leaves the waiting list, and a !wrongsong'd one is skipped.
 func (s *songs) watch(ctx *luna.Ctx) error {
 	s.mu.Lock()
-	idle := len(s.pending) == 0
+	n := len(s.pending)
+	// A request that never came up (skipped in Spotify, its queue cleared) stops counting after 3 hours.
+	s.pending = slices.DeleteFunc(s.pending, func(r Request) bool { return s.bot.Now().Sub(r.At) > 3*time.Hour })
+	expired, idle := len(s.pending) != n, len(s.pending) == 0
 	s.mu.Unlock()
+	if expired {
+		if err := s.save(ctx); err != nil {
+			return err
+		}
+	}
 	if idle {
 		return nil
 	}

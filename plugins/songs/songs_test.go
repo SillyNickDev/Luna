@@ -39,7 +39,7 @@ func TestRequests(t *testing.T) {
 	said(t, h.Chat("fox", "!sr never gonna"), "🎵 Added Never Gonna Give You Up by Rick Astley (#1 in the queue).")
 	said(t, h.Chat("owl", "!sr https://open.spotify.com/track/t2"), "Can't request Long Mix by DJ: it's longer than 10m0s.")
 	h.Clock.Advance(10 * time.Second)
-	said(t, h.Chat("owl", "!sr rude"), "Can't request Rude Song by Band: it's explicit.")
+	said(t, h.Chat("owl", "!sr rude song"), "Can't request Rude Song by Band: it's explicit.")
 	h.Clock.Advance(10 * time.Second)
 	said(t, h.Chat("owl", "!sr darude"), "Can't request Darude Sandstorm by Darude: it's on the blocklist.")
 	h.Clock.Advance(10 * time.Second)
@@ -97,4 +97,16 @@ func TestPlaylistAndRedeem(t *testing.T) {
 	said(t, h.Said(), "Can't request Never Gonna Give You Up by Rick Astley: only songs from the request playlist are allowed.")
 	h.Emit("twitch.channel.redeem", map[string]any{"user": "fox", "reward": "song REQUEST", "input": "darude"})
 	said(t, h.Said(), "🎵 Added Darude Sandstorm by Darude (#1 in the queue).")
+}
+
+// Requests that never play stop counting: at the end of the stream, or after 3 hours.
+func TestStaleRequests(t *testing.T) {
+	h := start(t, map[string]any{"max_per_user": 1})
+	said(t, h.Chat("fox", "!sr never gonna"), "🎵 Added Never Gonna Give You Up by Rick Astley (#1 in the queue).")
+	h.Clock.Advance(3*time.Hour + time.Minute)
+	said(t, h.Chat("fox", "!sr darude"), "🎵 Added Darude Sandstorm by Darude (#1 in the queue).")
+	h.Emit("twitch.stream.offline", nil)
+	if out, _ := h.CLI("list", nil); len(out.([]any)) != 0 {
+		t.Fatalf("still waiting after the stream: %v", out)
+	}
 }
