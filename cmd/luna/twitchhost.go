@@ -21,9 +21,56 @@ import (
 // the chatter (the bot account if there is one), and public lookups.
 type twitchHost struct {
 	bc, chatter *twitch.Client
+	echo        echoes
+}
+
+// echoes remembers what Luna just said, so its own messages coming back through EventSub
+// don't run commands. Recorded before sending, so the echo can't beat it.
+type echoes struct {
+	mu   sync.Mutex
+	sent map[string]time.Time // normalized text → when Luna sent it
+}
+
+func normalize(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+func (e *echoes) add(text string, now time.Time) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.sent == nil {
+		e.sent = map[string]time.Time{}
+	}
+	for k, at := range e.sent {
+		if now.Sub(at) > 30*time.Second {
+			delete(e.sent, k)
+		}
+	}
+	e.sent[normalize(text)] = now
+}
+
+// take reports whether Luna sent text in the last 30 s, forgetting it so a repeat by a person counts.
+func (e *echoes) take(text string, now time.Time) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	k := normalize(text)
+	at, ok := e.sent[k]
+	delete(e.sent, k)
+	return ok && now.Sub(at) <= 30*time.Second
+}
+
+// own reports whether a chat message is one Luna sent. With a bot account that's anything
+// the bot says; chatting as the broadcaster, only what Luna just sent, so the broadcaster's
+// own !commands still work.
+func (t *twitchHost) own(userID, text string) bool {
+	if userID != t.chatter.UserID() {
+		return false
+	}
+	return t.chatter != t.bc || t.echo.take(text, time.Now())
 }
 
 func (t *twitchHost) send(ctx context.Context, m guard.Msg) error {
+	if m.Mode != "whisper" {
+		t.echo.add(m.Text, time.Now())
+	}
 	b := t.bc.UserID()
 	switch {
 	case m.Mode == "announce":

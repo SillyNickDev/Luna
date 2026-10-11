@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -116,7 +115,7 @@ func runDaemon(p paths) error {
 		return fmt.Errorf("capsules: %w", err)
 	}
 	router := &chatRouter{rt: caps, host: host, policy: func() *perms.Policy { return policyFrom(cfg.Get()) },
-		botID: func() string { id, _ := chatterID.Load().(string); return id }}
+		own: func(id, text string) bool { return th != nil && th.own(id, text) }}
 	chatSub := b.Subscribe(256, "twitch.chat.message")
 	go router.run(chatSub)
 
@@ -183,9 +182,6 @@ func runDaemon(p paths) error {
 // startTwitch connects the broadcaster account and, if logged in, the bot account,
 // which then reads and sends chat. Without a broadcaster login Luna runs offline.
 // ponytail: client ID and tokens are read once; changing them needs a restart.
-// chatterID is the account Luna chats as; its own messages never trigger chat commands.
-var chatterID atomic.Value
-
 func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) (*twitch.Client, *twitchHost) {
 	store := secrets.Open(p.data)
 	if !store.UsesKeyring() {
@@ -225,6 +221,5 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 	}
 	th := &twitchHost{bc: bc, chatter: chatter}
 	g.Live = th.send
-	chatterID.Store(chatter.UserID())
 	return bc, th
 }

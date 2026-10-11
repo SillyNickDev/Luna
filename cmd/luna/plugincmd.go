@@ -304,7 +304,7 @@ type chatRouter struct {
 	rt     *capsule.Runtime
 	host   *plugin.Host
 	policy func() *perms.Policy
-	botID  func() string
+	own    func(userID, text string) bool // a message Luna itself sent: never a command
 
 	mu   sync.Mutex
 	last map[string]time.Time // cooldown key → last use
@@ -329,7 +329,7 @@ func (cr *chatRouter) run(sub *bus.Sub) {
 			} `json:"user"`
 			Text string `json:"text"`
 		}
-		if json.Unmarshal(ev.Data, &d) != nil || !strings.HasPrefix(d.Text, "!") || d.User.ID == cr.botID() {
+		if json.Unmarshal(ev.Data, &d) != nil || !strings.HasPrefix(d.Text, "!") || cr.own(d.User.ID, d.Text) {
 			continue
 		}
 		words := strings.Fields(strings.Map(invisible, d.Text))
