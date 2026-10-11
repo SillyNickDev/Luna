@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -258,11 +259,21 @@ func (t apiTrack) track() *Track {
 	return &Track{ID: t.ID, URI: t.URI, Name: t.Name, Artists: strings.Join(names, ", "), DurationMS: t.DurationMS, Explicit: t.Explicit}
 }
 
+// spotifyID is what Spotify IDs look like: base62, nothing that could change a URL.
+var spotifyID = regexp.MustCompile(`^[0-9A-Za-z]{1,64}$`)
+
+func validID(id string) string {
+	if spotifyID.MatchString(id) {
+		return id
+	}
+	return ""
+}
+
 // TrackID reads a track ID from a Spotify link or URI ("" if s isn't one).
 func TrackID(s string) string {
 	s = strings.TrimSpace(s)
 	if id, ok := strings.CutPrefix(s, "spotify:track:"); ok {
-		return id
+		return validID(id)
 	}
 	u, err := url.Parse(s)
 	if err != nil || u.Host != "open.spotify.com" {
@@ -271,27 +282,27 @@ func TrackID(s string) string {
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	for i := 0; i+1 < len(parts); i++ {
 		if parts[i] == "track" {
-			return parts[i+1]
+			return validID(parts[i+1])
 		}
 	}
 	return ""
 }
 
-// PlaylistID reads a playlist ID from a link, URI or the bare ID.
+// PlaylistID reads a playlist ID from a link, URI or the bare ID ("" if it isn't one).
 func PlaylistID(s string) string {
 	s = strings.TrimSpace(s)
 	if id, ok := strings.CutPrefix(s, "spotify:playlist:"); ok {
-		return id
+		return validID(id)
 	}
 	if u, err := url.Parse(s); err == nil && u.Host == "open.spotify.com" {
 		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 		for i := 0; i+1 < len(parts); i++ {
 			if parts[i] == "playlist" {
-				return parts[i+1]
+				return validID(parts[i+1])
 			}
 		}
 	}
-	return s
+	return validID(s)
 }
 
 // Find is the track a request names: a Spotify link, or the top search result.

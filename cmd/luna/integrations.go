@@ -171,6 +171,9 @@ func (h *spotifyHost) Call(ctx context.Context, call string, raw []byte) (any, e
 		return nil, h.c.Skip(ctx)
 	case "in_playlist":
 		id := spotify.PlaylistID(a.Playlist)
+		if id == "" {
+			return nil, errors.New("that isn't a Spotify playlist link or ID")
+		}
 		h.mu.Lock()
 		pc, ok := h.lists[id]
 		h.mu.Unlock()

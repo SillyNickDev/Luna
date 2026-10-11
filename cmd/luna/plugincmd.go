@@ -314,7 +314,7 @@ type chatRouter struct {
 }
 
 // invisible strips characters that make two commands look alike but compare different.
-// shortcut: no NFKC folding yet (needs golang.org/x/text); add with the Moderation filters.
+// shortcut: no NFKC folding, so a full-width "!ｓｏ" isn't a command; x/text/unicode/norm is a dependency already if streamers want it.
 func invisible(r rune) rune {
 	switch {
 	case r >= 0x200B && r <= 0x200F, r >= 0x202A && r <= 0x202E, r >= 0x2060 && r <= 0x2064, r == 0xFEFF:

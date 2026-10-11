@@ -7,7 +7,7 @@
 //	})
 //	bot.Run()
 //
-// shortcut: no links or wait_for yet; they come with the full Go SDK in Phase 5.
+// shortcut: no wait_for or cron yet (the Python SDK has both); add them when a Go plugin needs them.
 package luna
 
 import (

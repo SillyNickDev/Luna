@@ -255,7 +255,8 @@ type Unpacked struct {
 }
 
 // AddToStore verifies a package folder or .capsule file and places it under storeDir/<hash>.
-// shortcut: capsule.sig isn't checked yet; add once signing keys and the index exist (open question).
+// shortcut: capsule.sig isn't checked; packages from the plugin index are covered by its signature,
+// so this matters only for packages passed around by hand.
 func AddToStore(storeDir, src string) (*Unpacked, error) {
 	if err := os.MkdirAll(storeDir, 0o700); err != nil {
 		return nil, err
