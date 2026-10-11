@@ -1,0 +1,26 @@
+id = "dev.test.hello"
+version = "0.1.0"
+api = "1"
+
+[permissions]
+events = ["twitch.channel.follow", "twitch.chat.message"]
+chat = ["send"]
+store = true
+mod = ["timeout"]
+
+[[chat.commands]]
+name = "hi"
+cooldown = { global = "10s" }
+
+[[chat.commands]]
+name = "zap"
+capability = "mod.timeout"
+
+[cli]
+name = "hello"
+
+[[cli.commands]]
+name = "count"
+
+[config]
+greeting = { type = "str", default = "Welcome" }
