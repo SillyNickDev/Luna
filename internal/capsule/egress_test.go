@@ -64,31 +64,37 @@ func TestEgressProxy(t *testing.T) {
 	e.public = func(ip net.IP) bool { return ip.IsLoopback() || real(ip) } // pretend loopback is the internet...
 	go e.serve(ln)
 
-	connect := func(host string) (string, net.Conn) {
+	connect := func(host string) (string, net.Conn, *bufio.Reader) {
 		c, err := net.Dial("unix", filepath.Join(dir, "egress.sock"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		fmt.Fprintf(c, "CONNECT %s:%s HTTP/1.1\r\nHost: %s:%s\r\n\r\nping\n", host, port, host, port)
-		line, _ := bufio.NewReader(c).ReadString('\n')
-		return strings.TrimSpace(line), c
+		br := bufio.NewReader(c) // one reader: the echo can arrive in the same packet as the 200
+		line, _ := br.ReadString('\n')
+		return strings.TrimSpace(line), c, br
 	}
-	status, c := connect("api.example.com")
+	status, c, br := connect("api.example.com")
 	if status != "HTTP/1.1 200 Connection Established" {
 		t.Fatalf("allowed host: %q", status)
 	}
-	got, _ := bufio.NewReader(c).ReadString('\n') // "ping", sent in the same packet as CONNECT
+	var got string
+	for !strings.HasSuffix(got, "ping\n") && err == nil { // skip the rest of the 200 response's header
+		var line string
+		line, err = br.ReadString('\n')
+		got = line
+	}
 	c.Close()
 	if !strings.HasSuffix(got, "ping\n") {
 		t.Fatalf("tunnel: %q", got)
 	}
-	if status, c := connect("evil.example.com"); !strings.Contains(status, "403") {
+	if status, c, _ := connect("evil.example.com"); !strings.Contains(status, "403") {
 		t.Fatalf("unlisted host: %q", status)
 	} else {
 		c.Close()
 	}
 	e.public = real // ...and now it's private again, as it really is
-	if status, c := connect("lan.example.com"); !strings.Contains(status, "403") {
+	if status, c, _ := connect("lan.example.com"); !strings.Contains(status, "403") {
 		t.Fatalf("listed name resolving to a private address: %q", status)
 	} else {
 		c.Close()
