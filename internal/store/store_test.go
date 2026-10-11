@@ -19,6 +19,8 @@ func TestLogFlushesOnClose(t *testing.T) {
 	ev, _ := event.New("twitch.channel.raid", "twitch", true, map[string]int{"viewers": 40})
 	c <- ev
 	c <- ev // duplicate ID is ignored
+	param, _ := event.New("osc.param", "osc", false, map[string]any{"name": "JawOpen", "value": 0.4})
+	c <- param // live avatar state isn't history
 	close(c)
 	s.Log(c)
 
@@ -28,6 +30,9 @@ func TestLogFlushesOnClose(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("logged %d events, want 1", n)
+	}
+	if s.db.QueryRow(`SELECT count(*) FROM events`).Scan(&n); n != 1 {
+		t.Fatalf("logged %d events in all, want just the raid", n)
 	}
 }
 

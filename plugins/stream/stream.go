@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -199,6 +200,7 @@ func (s *stream) poll(ctx *luna.Ctx) error {
 		s.recap.Game = st.Game
 	}
 	r := *s.recap
+	r.Chatters = maps.Clone(s.recap.Chatters) // the chat handler keeps writing the live map
 	s.mu.Unlock()
 	if err := s.bot.Store.Set(ctx, "recap:current", r, 0); err != nil {
 		return err
@@ -219,6 +221,7 @@ func (s *stream) offline(ctx *luna.Ctx, ev *luna.Event) error {
 	s.live = false
 	s.recap.Ended = s.bot.Now()
 	r := *s.recap
+	r.Chatters = maps.Clone(s.recap.Chatters)
 	if s.adT != nil {
 		s.adT()
 		s.adT = nil
@@ -262,6 +265,7 @@ func (s *stream) lastRecap(ctx *luna.Ctx) (*Recap, error) {
 	s.mu.Lock()
 	if s.live && s.recap != nil {
 		r := *s.recap
+		r.Chatters = maps.Clone(s.recap.Chatters)
 		s.mu.Unlock()
 		r.TopChatters = s.top(r.Chatters)
 		r.Chatters = nil

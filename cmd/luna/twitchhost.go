@@ -72,6 +72,12 @@ func (t *twitchHost) Lookup(ctx context.Context, call, user string, raw []byte) 
 		}
 	}
 	switch call {
+	case "ban": // internal: plugins can't ask for it (it isn't in the plugin server's twitchCalls)
+		banned, until, err := t.bc.Banned(ctx, user)
+		if err != nil || !banned {
+			return nil, err
+		}
+		return map[string]any{"permanent": until.IsZero(), "until": until}, nil
 	case "categories":
 		return t.bc.SearchCategories(ctx, args.Query)
 	case "schedule":

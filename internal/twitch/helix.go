@@ -34,6 +34,23 @@ func (c *Client) Unban(ctx context.Context, userID string) error {
 	return c.helix(ctx, "DELETE", "/moderation/bans?"+c.q("broadcaster_id", c.userID, "moderator_id", c.userID, "user_id", userID), nil, nil)
 }
 
+// Banned reports whether userID is banned or timed out here, and when it ends (zero: a permanent ban).
+func (c *Client) Banned(ctx context.Context, userID string) (bool, time.Time, error) {
+	var out struct {
+		Data []struct {
+			ExpiresAt string `json:"expires_at"` // "" for a permanent ban
+		} `json:"data"`
+	}
+	if err := c.helix(ctx, "GET", "/moderation/banned?"+c.q("broadcaster_id", c.userID, "user_id", userID), nil, &out); err != nil {
+		return false, time.Time{}, err
+	}
+	if len(out.Data) == 0 {
+		return false, time.Time{}, nil
+	}
+	end, _ := time.Parse(time.RFC3339, out.Data[0].ExpiresAt)
+	return true, end, nil
+}
+
 func (c *Client) DeleteMessage(ctx context.Context, messageID string) error {
 	return c.helix(ctx, "DELETE", "/moderation/chat?"+c.q("broadcaster_id", c.userID, "moderator_id", c.userID, "message_id", messageID), nil, nil)
 }

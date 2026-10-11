@@ -3,9 +3,11 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -253,5 +255,43 @@ func TestModTwitchViewers(t *testing.T) {
 	}
 	if v, _ := c.StoreGet(ctx, &pb.StoreKey{Key: "a"}); string(v.ValueJson) != "1" {
 		t.Fatalf("batch set: %s", v.ValueJson)
+	}
+}
+
+type banTwitch struct {
+	permanent map[string]bool
+	unbanned  []string
+}
+
+func (f *banTwitch) Mod(_ context.Context, r *pb.ModRequest) error {
+	f.unbanned = append(f.unbanned, r.UserId)
+	return nil
+}
+
+func (f *banTwitch) Lookup(_ context.Context, call, user string, _ []byte) (any, error) {
+	if p, ok := f.permanent[user]; ok && call == "ban" {
+		return map[string]any{"permanent": p}, nil
+	}
+	return nil, nil
+}
+
+// With only "timeout", a plugin may lift timeouts but not permanent bans.
+func TestUnbanNeedsBanForPermanentBans(t *testing.T) {
+	tw := &banTwitch{permanent: map[string]bool{"banned": true, "timedout": false}}
+	s := &server{h: &Host{Twitch: tw, Guard: guard.New(config.Default)}, p: Plugin{Manifest: &Manifest{}, Log: io.Discard}}
+	s.p.Manifest.Permissions.Mod = []string{"timeout"}
+	ctx := context.Background()
+	if _, err := s.Mod(ctx, &pb.ModRequest{Action: "unban", UserId: "timedout"}); err != nil {
+		t.Fatalf("lifting a timeout: %v", err)
+	}
+	if _, err := s.Mod(ctx, &pb.ModRequest{Action: "unban", UserId: "banned"}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("lifting a permanent ban with only timeout: %v", err)
+	}
+	s.p.Manifest.Permissions.Mod = []string{"ban"}
+	if _, err := s.Mod(ctx, &pb.ModRequest{Action: "unban", UserId: "banned"}); err != nil {
+		t.Fatalf("with ban: %v", err)
+	}
+	if want := []string{"timedout", "banned"}; !slices.Equal(tw.unbanned, want) {
+		t.Fatalf("unbanned %v, want %v", tw.unbanned, want)
 	}
 }

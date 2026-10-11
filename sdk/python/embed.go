@@ -3,7 +3,6 @@ package pysdk
 
 import (
 	"embed"
-	"io/fs"
 
 	"luna/internal/sdkfs"
 )
@@ -12,7 +11,4 @@ import (
 var files embed.FS
 
 // Install writes the SDK under base/python-<hash>/ (once per SDK version) and returns that folder.
-func Install(base string) (string, error) {
-	sub, _ := fs.Sub(files, ".")
-	return sdkfs.Install(sub, base, "python")
-}
+func Install(base string) (string, error) { return sdkfs.Install(files, base, "python") }

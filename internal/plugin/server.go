@@ -269,6 +269,8 @@ func twitchErr(err error) error {
 	return status.Error(codes.FailedPrecondition, err.Error())
 }
 
+var errPermanentBan = errors.New("permanent ban")
+
 // modPerm is the [permissions].mod entry each action needs; lifting a timeout is part of timing out.
 var modPerm = map[string]string{"timeout": "timeout", "ban": "ban", "delete": "delete", "warn": "warn",
 	"shield": "shield", "shoutout": "shoutout"}
@@ -312,8 +314,21 @@ func (s *server) Mod(ctx context.Context, r *pb.ModRequest) (*pb.Empty, error) {
 		if s.h.Twitch == nil {
 			return guard.ErrOffline
 		}
+		if r.Action == "unban" && need == "timeout" {
+			// Twitch lifts bans and timeouts with one call; with only "timeout", a permanent ban stays.
+			v, err := s.h.Twitch.Lookup(ctx, "ban", r.UserId, nil)
+			if err != nil {
+				return err
+			}
+			if b, _ := v.(map[string]any); b != nil && b["permanent"] == true {
+				return errPermanentBan
+			}
+		}
 		return s.h.Twitch.Mod(ctx, r)
 	})
+	if errors.Is(err, errPermanentBan) {
+		return nil, denied(`"ban" to [permissions].mod (lifting a permanent ban)`)
+	}
 	return &pb.Empty{}, twitchErr(err)
 }
 

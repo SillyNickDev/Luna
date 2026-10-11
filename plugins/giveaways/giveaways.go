@@ -44,6 +44,7 @@ type Giveaway struct {
 	Keyword    string    `json:"keyword"`
 	Started    time.Time `json:"started"`
 	Ends       time.Time `json:"ends,omitzero"`
+	Closed     time.Time `json:"closed,omitzero"` // when entries stopped: close, the timer or the first draw
 	Open       bool      `json:"open"`
 	Who        string    `json:"who"` // everyone, followers, subs
 	MinFollowD int       `json:"min_follow_days,omitempty"`
@@ -143,6 +144,18 @@ func (g *giveaways) setLive(v bool) {
 
 func (g *giveaways) save(ctx *luna.Ctx, ga *Giveaway) error {
 	return g.bot.Store.Set(ctx, "cur", ga, 0)
+}
+
+// accepts reports whether an entry sent at ts counts. Entries are judged by when they were
+// sent, so a chat backlog (replies wait on the rate limit) can't push them past the deadline.
+func (ga *Giveaway) accepts(ts time.Time) bool {
+	switch {
+	case ga.Cancelled || len(ga.Draws) > 0:
+		return false // the list is frozen once anyone has been drawn
+	case !ga.Closed.IsZero():
+		return ts.Before(ga.Closed)
+	}
+	return ga.Open && (ga.Ends.IsZero() || ts.Before(ga.Ends))
 }
 
 func entryKey(gid int64, uid string) string { return fmt.Sprintf("e:%d:%s", gid, uid) }
@@ -305,7 +318,10 @@ func (g *giveaways) close(ctx *luna.Ctx) (string, error) {
 	if g.cur == nil || !g.cur.Open {
 		return "", nil
 	}
-	g.cur.Open = false
+	g.cur.Open, g.cur.Closed = false, g.bot.Now()
+	if !g.cur.Ends.IsZero() && g.cur.Ends.Before(g.cur.Closed) {
+		g.cur.Closed = g.cur.Ends // the timer fired a moment late
+	}
 	if g.closeT != nil {
 		g.closeT()
 		g.closeT = nil
@@ -335,7 +351,11 @@ func (g *giveaways) cancel(ctx *luna.Ctx) (string, error) {
 		if e.Spent > 0 {
 			if err := g.bot.Links.Call(ctx, pointsAdd, map[string]any{"user_id": e.UserID, "login": e.Login, "amount": e.Spent,
 				"reason": "giveaway refund"}, nil); err != nil {
-				return "", fmt.Errorf("refunds stopped after %d: %v", refunded, err)
+				return "", fmt.Errorf("refunds stopped after %d (run cancel again to finish): %v", refunded, err)
+			}
+			e.Spent = 0 // refunded: a second cancel after a failure mustn't pay it again
+			if err := g.bot.Store.Set(ctx, entryKey(g.cur.ID, e.UserID), e, 0); err != nil {
+				return "", err
 			}
 			refunded++
 		}
@@ -383,7 +403,7 @@ func (g *giveaways) chat(ctx *luna.Ctx, ev *luna.Event) error {
 			return err
 		}
 	}
-	if ga == nil || !ga.Open || text[0] != ga.Keyword || (!ga.Ends.IsZero() && !g.bot.Now().Before(ga.Ends)) {
+	if ga == nil || text[0] != ga.Keyword || !ga.accepts(ev.TS) {
 		g.mu.Unlock()
 		return nil
 	}
@@ -439,7 +459,7 @@ func (g *giveaways) chat(ctx *luna.Ctx, ev *luna.Event) error {
 		g.bot.Links.Call(ctx, pointsAdd, map[string]any{"user_id": u.ID, "amount": cost, "reason": "giveaway refund"}, nil)
 		return err
 	}
-	return ctx.Reply(fmt.Sprintf("%s, you have %d tickets.", u.DisplayName(), e.Tickets))
+	return nil // no reply per purchase: with many buyers the replies would queue behind the chat rate limit
 }
 
 // eligible says why u can't enter, or "" if they can.
@@ -555,7 +575,7 @@ func (g *giveaways) draw(ctx *luna.Ctx, reroll bool) (string, error) {
 		return "", errors.New("Nothing to reroll yet: !giveaway draw first.")
 	}
 	if ga.Open { // drawing closes entries, so the list is frozen
-		ga.Open = false
+		ga.Open, ga.Closed = false, g.bot.Now()
 		if g.closeT != nil {
 			g.closeT()
 			g.closeT = nil

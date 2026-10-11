@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -143,4 +144,23 @@ func TestRaid(t *testing.T) {
 	if !slices.Equal(h.Twitch.Writes, []string{`raid {"to_id":"123"}`, "unraid"}) {
 		t.Fatalf("writes %q", h.Twitch.Writes)
 	}
+}
+
+// Recap reads while chat keeps counting must not share the map (go test -race catches it).
+func TestRecapWhileChatting(t *testing.T) {
+	h := start(t, nil)
+	h.Emit("twitch.stream.online", nil)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 200 {
+			h.Emit("twitch.chat.message", map[string]any{"user": fmt.Sprintf("u%d", i), "text": "hi"})
+		}
+	}()
+	for range 50 {
+		if _, err := h.CLI("recap", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	<-done
 }

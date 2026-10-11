@@ -206,21 +206,55 @@ func TestTicketGiveaway(t *testing.T) {
 		bal[a.Str("user_id")] -= a.Int("amount")
 		return map[string]any{"balance": bal[a.Str("user_id")]}, nil
 	})
+	flaky := true // the first refund to owl fails, as if Points were restarting
 	h.Link("luna.points:add", func(a luna.Args) (any, error) {
+		if a.Str("user_id") == "id-owl" && flaky {
+			flaky = false
+			return nil, luna.ErrLinkUnavailable
+		}
 		bal[a.Str("user_id")] += a.Int("amount")
 		return map[string]any{"balance": bal[a.Str("user_id")]}, nil
 	})
-	said(t, h.Chat("fox", "!enter 2"), "fox, you have 2 tickets.")
-	said(t, h.Chat("fox", "!enter 9"), "fox, you have 5 tickets.") // capped at max
+	said(t, h.Chat("fox", "!enter 2")) // bought quietly
+	said(t, h.Chat("fox", "!enter 9")) // capped at max
 	said(t, h.Chat("fox", "!enter"), "You already have the maximum of 5 tickets.")
 	said(t, h.Chat("owl", "!enter 2"), "not enough points: you have 150")
-	said(t, h.Chat("owl", "!enter"), "owl, you have 1 tickets.")
+	said(t, h.Chat("owl", "!enter"))
 	if bal["id-fox"] != 500 || bal["id-owl"] != 50 {
 		t.Fatalf("balances %v", bal)
 	}
-	said(t, h.Chat("mink", "!giveaway cancel", "luna-mod"), "The Prize giveaway was cancelled. Tickets refunded to 2 people.")
-	if bal["id-fox"] != 1000 || bal["id-owl"] != 150 {
+	if got := h.Chat("mink", "!giveaway cancel", "luna-mod"); len(got) != 1 || !strings.HasPrefix(got[0], "refunds stopped after 1") {
+		t.Fatalf("cancel with a failing refund: %q", got)
+	}
+	said(t, h.Chat("mink", "!giveaway cancel", "luna-mod"), "The Prize giveaway was cancelled. Tickets refunded to 1 people.")
+	if bal["id-fox"] != 1000 || bal["id-owl"] != 150 { // fox refunded once, not twice
 		t.Fatalf("not refunded: %v", bal)
 	}
 	said(t, h.Chat("mink", "!giveaway draw", "luna-mod"), "There's no giveaway to draw.")
+}
+
+// An entry sent before the deadline counts even when chat is backed up and it's handled after.
+func TestLateHandledEntry(t *testing.T) {
+	b := New()
+	h := lunatest.New(t, b, ".", nil)
+	h.Emit("twitch.stream.online", nil)
+	h.Chat("mink", "!giveaway start Prize duration=5m", "luna-mod")
+	sent := h.Clock.Now().Add(4 * time.Minute)
+	h.Clock.Advance(5 * time.Minute) // closed by the timer
+	h.Said()
+	entry := func(login string, at time.Time) {
+		raw, _ := json.Marshal(map[string]any{"user": map[string]any{"id": "id-" + login, "login": login, "rank": "viewer"},
+			"text": "!enter", "message_id": "m-" + login})
+		b.TestDispatch(&luna.Event{ID: "e-" + login, Type: "twitch.chat.message", TS: at, Data: raw})
+	}
+	entry("fox", sent)                           // typed in time, handled late
+	entry("owl", h.Clock.Now().Add(time.Second)) // typed after the close
+	if es := export(t, h).Entries; len(es) != 1 || es[0].Login != "fox" {
+		t.Fatalf("entries %+v", es)
+	}
+	h.Chat("mink", "!giveaway draw", "luna-mod")
+	entry("elk", sent) // once drawn, the list is frozen
+	if es := export(t, h).Entries; len(es) != 1 {
+		t.Fatalf("entry after the draw: %+v", es)
+	}
 }

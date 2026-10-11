@@ -109,6 +109,9 @@ func (s *Store) Log(c <-chan event.Event) {
 				flush()
 				return
 			}
+			if ev.Type == "osc.param" {
+				continue // avatar state at up to 30 Hz per parameter: live data, not history worth keeping
+			}
 			batch = append(batch, ev)
 			if len(batch) == 1 {
 				due = time.After(250 * time.Millisecond)
