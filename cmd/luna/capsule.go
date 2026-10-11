@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"luna/internal/capsule/sandbox"
 	"luna/internal/config"
 	"luna/internal/event"
+	"luna/internal/index"
 	"luna/internal/plugin"
 	"luna/internal/store"
 	"luna/plugins"
@@ -153,8 +155,10 @@ func capsuleCLI(p paths, args []string) error {
 		return capsuleInit(args[1:])
 	case "dev":
 		return capsuleDev(p, args[1:])
-	case "search", "update":
-		return fmt.Errorf("luna capsule %s comes with the SDK and plugin index (Phase 3)", args[0])
+	case "search":
+		return searchIndex(p, args[1:])
+	case "update":
+		return updateFromIndex(p, args[1:])
 	}
 	return call(p, request{Cmd: "capsule", Args: args})
 }
@@ -169,23 +173,49 @@ func installCapsule(p paths, args []string) error {
 		return errors.New("usage: luna capsule install [--yes] <folder|file.capsule|name>")
 	}
 	src := fs.Arg(0)
+	var want *index.Entry
 	if _, err := os.Stat(src); err != nil { // a folder named "points" beats the built-in one
-		fp, ok := plugins.Find(src)
-		if !ok {
-			return fmt.Errorf("%s: no such folder, .capsule file or first-party plugin (installing others by name needs the plugin index)", src)
+		if fp, ok := plugins.Find(src); ok {
+			dir, err := firstPartyPackage(fp.Manifest)
+			if err != nil {
+				return err
+			}
+			defer os.RemoveAll(dir)
+			src = dir
+		} else {
+			ix, base, err := fetchIndex(p)
+			if err != nil {
+				return fmt.Errorf("%s: no such folder, .capsule file or first-party plugin, and %w", src, err)
+			}
+			if want, err = ix.Find(src); err != nil {
+				return err
+			}
+			tmp, err := os.MkdirTemp("", "luna-dl-")
+			if err != nil {
+				return err
+			}
+			defer os.RemoveAll(tmp)
+			fmt.Printf("downloading %s %s from the plugin index\n", want.ID, want.Version)
+			if src, err = index.Download(context.Background(), base, want, tmp); err != nil {
+				return err
+			}
 		}
-		dir, err := firstPartyPackage(fp.Manifest)
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(dir)
-		src = dir
 	}
+	return installPackage(p, src, *yes, want)
+}
+
+// installPackage verifies a package, shows what it asks for, and registers it once approved.
+// want is the index entry it was downloaded for: the package must be exactly that.
+func installPackage(p paths, src string, yes bool, want *index.Entry) error {
 	u, err := capsule.AddToStore(p.capsuleStore(), src)
 	if err != nil {
 		return err
 	}
 	m := u.Manifest
+	if want != nil && (u.Hash != want.Hash || m.ID != want.ID || m.Version != want.Version) {
+		return fmt.Errorf("the downloaded package isn't what the signed index lists (%s %s %.12s, index %s %s %.12s); not installing it",
+			m.ID, m.Version, u.Hash, want.ID, want.Version, want.Hash)
+	}
 	if err := capsule.CanRun(u, p.runtimes()); err != nil {
 		return err
 	}
@@ -198,7 +228,7 @@ func installCapsule(p paths, args []string) error {
 		return err
 	}
 	if prev != fp {
-		if *yes {
+		if yes {
 			return errors.New("these permissions haven't been approved before; run without --yes to review them")
 		}
 		fmt.Printf("%s %s (%s) asks for:\n%s", m.ID, m.Version, m.Runtime, text)

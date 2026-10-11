@@ -20,6 +20,8 @@ const usageText = `usage: luna [--config <dir>] <command>
   start | stop | restart
                         control the systemd user service
   status | version      what's running; versions of Luna, the plugin API, capsule spec
+  index keygen <keyfile> | sign <dir> --key <keyfile> | revoke <dir> --key <keyfile> <id> <version> <reason>
+                        for whoever maintains a plugin index
   tui                   the dashboard: status, capsules, events, timeline, chat (mouse works)
   logs [-f] [--capsule <name>]
   events tail [--type twitch.*] [--json] | chat tail
@@ -45,6 +47,8 @@ const usageText = `usage: luna [--config <dir>] <command>
                         moderation actions, with undo (also: luna core --help)
   capsule list | enable | disable | restart | logs | inspect <name>
   capsule uninstall <name> [--keep-data]
+  capsule search [term] | update [name]
+                        plugins from the signed plugin index ([index] in luna.toml)
   capsule doctor | pack [dir] [-o file] | verify <path>
   capsule init <name> | dev [dir] [--live] | runtime add python-3.12
                         plugins, each in its own sandbox
@@ -88,6 +92,8 @@ func main() {
 			err = runDaemon(p)
 		case args[0] == "version":
 			fmt.Println(versionText())
+		case args[0] == "index":
+			err = indexCLI(args[1:])
 		case args[0] == "tui":
 			err = runTUI(p)
 		case args[0] == "status":

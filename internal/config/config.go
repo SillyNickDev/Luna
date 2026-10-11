@@ -42,6 +42,10 @@ type Config struct {
 	Spotify struct {
 		ClientID string `toml:"client_id"` // your app at developer.spotify.com, with redirect URI http://127.0.0.1:43219/callback
 	} `toml:"spotify"`
+	Index struct {
+		URL       string `toml:"url"`        // where index.json and the .capsule files are, https
+		PublicKey string `toml:"public_key"` // the index maintainer's Ed25519 key, base64
+	} `toml:"index"`
 	MemoryLimitMiB int `toml:"memory_limit_mib"`
 	// Plugins holds each plugin's settings, keyed by its CLI name, the last part of its ID,
 	// or its full ID. They're checked against the plugin's [config] schema when it starts.
