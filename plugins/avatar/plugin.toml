@@ -1,0 +1,38 @@
+id = "luna.avatar"
+name = "Avatar: VRChat parameters from redeems and bits, chatbox mirror"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__avatar"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+events = ["twitch.channel.redeem", "twitch.channel.cheer", "twitch.chat.message", "osc.avatar"]
+osc = ["send:/avatar/parameters/*", "chatbox", "read"]
+
+[cli]
+name = "avatar"
+
+[[cli.commands]]
+name = "params"
+summary = "the current avatar's parameters, and mappings it doesn't have"
+
+[[cli.commands]]
+name = "test"
+summary = "run a redeem's mappings as if it had been redeemed"
+args = [{ name = "reward", type = "str" }]
+mutates = true
+
+# Mappings go in luna.toml, e.g.
+#   [[plugins.avatar.redeem]]
+#   reward = "Toggle ears"
+#   param = "Ears"
+#   action = "toggle"          # toggle, pulse (on, then off after duration) or set (to value)
+[config]
+redeem = { type = "list", default = [] }
+bits = { type = "list", default = [] }
+chatbox = { type = "str", default = "off" }   # off, subs, highlighted, say
+chatbox_reward = { type = "str", default = "" }
+chatbox_format = { type = "str", default = "{user}: {text}" }

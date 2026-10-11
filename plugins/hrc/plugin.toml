@@ -1,0 +1,42 @@
+id = "luna.hrc"
+name = "Heart rate: !hr, alerts, stream summary, avatar parameter"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__hrc"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+events = ["hr.update", "twitch.stream.online", "twitch.stream.offline"]
+chat = ["send"]
+twitch = ["read"]
+store = true
+osc = ["send:/avatar/parameters/HeartRate*"]   # osc_param must start with HeartRate
+
+[cli]
+name = "hrc"
+
+[[cli.commands]]
+name = "summary"
+summary = "the current or last stream's heart rate: resting, average, peak and when"
+
+[[cli.commands]]
+name = "now"
+summary = "the latest reading and the last 5 minutes"
+
+[[chat.commands]]
+name = "hr"
+aliases = ["heartrate"]
+cooldown = { global = "10s" }
+
+[config]
+name = { type = "str", default = "The streamer" }
+alert = { type = "bool", default = false }
+alert_bpm = { type = "int", default = 140 }
+alert_message = { type = "str", default = "{name}'s heart rate just hit {bpm} bpm 💓" }
+alert_cooldown_s = { type = "int", default = 300 }
+osc_param = { type = "str", default = "HeartRate" }   # "" to not send it to the avatar
+stale_s = { type = "int", default = 60 }
+summary_chat = { type = "bool", default = false }
