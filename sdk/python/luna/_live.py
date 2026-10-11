@@ -86,8 +86,22 @@ class Transport:
     def hello(self):
         return self._rpc(self.stub.Hello, pb.HelloRequest(api=API, sdk=SDK))
 
-    def chat_send(self, text, simulated, reply_to):
-        self._rpc(self.stub.ChatSend, pb.ChatSendRequest(text=text, simulated=simulated, reply_to=reply_to))
+    def chat_send(self, text, simulated, reply_to, mode="", to=""):
+        self._rpc(self.stub.ChatSend, pb.ChatSendRequest(text=text, simulated=simulated, reply_to=reply_to,
+                                                         mode=mode, to_user_id=to))
+
+    def mod(self, req):
+        self._rpc(self.stub.Mod, pb.ModRequest(**req))
+
+    def twitch(self, call, user):
+        return self._rpc(self.stub.Twitch, pb.TwitchRequest(call=call, user=user)).data_json
+
+    def viewer(self, user):
+        return self._rpc(self.stub.Viewer, pb.ViewerRequest(user=user)).data_json
+
+    def store_batch(self, sets, deletes):
+        self._rpc(self.stub.StoreBatch, pb.StoreBatchRequest(
+            set=[pb.StoreSetRequest(key=k, value_json=v, ttl_ms=t) for k, v, t in sets], delete=deletes))
 
     def store_get(self, key):
         r = self._rpc(self.stub.StoreGet, pb.StoreKey(key=key))
@@ -165,17 +179,23 @@ def run(bot):
         print(msg, file=sys.stderr, flush=True)
         os._exit(1)
 
-    # Each handler gets its own ordered queue and thread, so a slow one doesn't hold up the others.
+    # Each handler gets its own ordered queue and thread (or `concurrency` threads), so a
+    # slow one doesn't hold up the others.
     for h in bot._handlers:
         h.q = queue.Queue(1000)
 
         def work(h=h):
             while True:
                 ev = h.q.get()
-                bot._call(h.fn, ev, event=ev)
-        threading.Thread(target=work, daemon=True).start()
+                h.busy += 1
+                try:
+                    bot._call(h.fn, ev, event=ev)
+                finally:
+                    h.busy -= 1
+        for _ in range(h.concurrency):
+            threading.Thread(target=work, daemon=True).start()
 
-    types = sorted({h.type for h in bot._handlers})
+    types = bot.describe()["events"]
     if types:
         def events():
             try:
@@ -214,8 +234,7 @@ def run(bot):
             results.put(r)
         threading.Thread(target=commands, daemon=True).start()
 
-    for interval, fn in bot.timers._every:
-        bot._schedule(interval, fn, interval)
+    bot.timers._start()
 
     def timers():
         while not bot._stopping.is_set():

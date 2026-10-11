@@ -54,6 +54,21 @@ class HostStub:
                 request_serializer=plugin__pb2.ChatSendRequest.SerializeToString,
                 response_deserializer=plugin__pb2.Empty.FromString,
                 _registered_method=True)
+        self.Mod = channel.unary_unary(
+                '/luna.plugin.v1.Host/Mod',
+                request_serializer=plugin__pb2.ModRequest.SerializeToString,
+                response_deserializer=plugin__pb2.Empty.FromString,
+                _registered_method=True)
+        self.Twitch = channel.unary_unary(
+                '/luna.plugin.v1.Host/Twitch',
+                request_serializer=plugin__pb2.TwitchRequest.SerializeToString,
+                response_deserializer=plugin__pb2.TwitchReply.FromString,
+                _registered_method=True)
+        self.Viewer = channel.unary_unary(
+                '/luna.plugin.v1.Host/Viewer',
+                request_serializer=plugin__pb2.ViewerRequest.SerializeToString,
+                response_deserializer=plugin__pb2.ViewerReply.FromString,
+                _registered_method=True)
         self.StoreGet = channel.unary_unary(
                 '/luna.plugin.v1.Host/StoreGet',
                 request_serializer=plugin__pb2.StoreKey.SerializeToString,
@@ -78,6 +93,11 @@ class HostStub:
                 '/luna.plugin.v1.Host/StoreKeys',
                 request_serializer=plugin__pb2.StoreKeysRequest.SerializeToString,
                 response_deserializer=plugin__pb2.StoreKeysReply.FromString,
+                _registered_method=True)
+        self.StoreBatch = channel.unary_unary(
+                '/luna.plugin.v1.Host/StoreBatch',
+                request_serializer=plugin__pb2.StoreBatchRequest.SerializeToString,
+                response_deserializer=plugin__pb2.Empty.FromString,
                 _registered_method=True)
         self.Log = channel.unary_unary(
                 '/luna.plugin.v1.Host/Log',
@@ -124,6 +144,28 @@ class HostServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Mod(self, request, context):
+        """Mod takes a moderation action as the channel; needs the action in [permissions].mod.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Twitch(self, request, context):
+        """Twitch reads public channel facts (users, the channel, the stream, follows); needs
+        "read" in [permissions].twitch. Not found answers data_json "null".
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Viewer(self, request, context):
+        """Viewer is Luna's shared profile of a chatter; needs viewers = true.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def StoreGet(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -150,6 +192,13 @@ class HostServicer:
 
     def StoreKeys(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StoreBatch(self, request, context):
+        """StoreBatch applies its sets and deletes atomically.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -190,6 +239,21 @@ def add_HostServicer_to_server(servicer, server):
                     request_deserializer=plugin__pb2.ChatSendRequest.FromString,
                     response_serializer=plugin__pb2.Empty.SerializeToString,
             ),
+            'Mod': grpc.unary_unary_rpc_method_handler(
+                    servicer.Mod,
+                    request_deserializer=plugin__pb2.ModRequest.FromString,
+                    response_serializer=plugin__pb2.Empty.SerializeToString,
+            ),
+            'Twitch': grpc.unary_unary_rpc_method_handler(
+                    servicer.Twitch,
+                    request_deserializer=plugin__pb2.TwitchRequest.FromString,
+                    response_serializer=plugin__pb2.TwitchReply.SerializeToString,
+            ),
+            'Viewer': grpc.unary_unary_rpc_method_handler(
+                    servicer.Viewer,
+                    request_deserializer=plugin__pb2.ViewerRequest.FromString,
+                    response_serializer=plugin__pb2.ViewerReply.SerializeToString,
+            ),
             'StoreGet': grpc.unary_unary_rpc_method_handler(
                     servicer.StoreGet,
                     request_deserializer=plugin__pb2.StoreKey.FromString,
@@ -214,6 +278,11 @@ def add_HostServicer_to_server(servicer, server):
                     servicer.StoreKeys,
                     request_deserializer=plugin__pb2.StoreKeysRequest.FromString,
                     response_serializer=plugin__pb2.StoreKeysReply.SerializeToString,
+            ),
+            'StoreBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.StoreBatch,
+                    request_deserializer=plugin__pb2.StoreBatchRequest.FromString,
+                    response_serializer=plugin__pb2.Empty.SerializeToString,
             ),
             'Log': grpc.unary_unary_rpc_method_handler(
                     servicer.Log,
@@ -334,6 +403,87 @@ class Host:
             '/luna.plugin.v1.Host/ChatSend',
             plugin__pb2.ChatSendRequest.SerializeToString,
             plugin__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Mod(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/Mod',
+            plugin__pb2.ModRequest.SerializeToString,
+            plugin__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Twitch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/Twitch',
+            plugin__pb2.TwitchRequest.SerializeToString,
+            plugin__pb2.TwitchReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Viewer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/Viewer',
+            plugin__pb2.ViewerRequest.SerializeToString,
+            plugin__pb2.ViewerReply.FromString,
             options,
             channel_credentials,
             insecure,
@@ -469,6 +619,33 @@ class Host:
             '/luna.plugin.v1.Host/StoreKeys',
             plugin__pb2.StoreKeysRequest.SerializeToString,
             plugin__pb2.StoreKeysReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StoreBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/StoreBatch',
+            plugin__pb2.StoreBatchRequest.SerializeToString,
+            plugin__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,

@@ -1,4 +1,4 @@
-from luna import Config, bot
+from luna import Config, bot, events
 
 
 class Settings(Config):
@@ -54,6 +54,56 @@ def duel(ctx, target: str, rounds: int = 3):
 @bot.timers.every("15m")
 def hydrate():
     bot.chat.send("Hydration check 💧")
+
+
+bot.listen(events.TWITCH_CHAT_MESSAGE)  # for wait_for below
+
+
+@bot.chat_command("fight")
+async def fight(ctx, target: str):
+    ctx.reply(f"{target}, type !accept within 30s")
+    ok = await bot.wait_for("twitch.chat.message", user=target, text="!accept", timeout=30)
+    ctx.reply("Fight!" if ok else f"{target} chickened out")
+
+
+@bot.chat_command("zap", capability="mod.timeout")
+def zap(ctx, target: str):
+    who = bot.twitch.user(target)
+    if who is None:
+        return ctx.reply(f"no user {target}")
+    bot.mod.timeout(who, "10m", reason="zapped")
+    bot.chat.announce(f"{who.name} got zapped")
+
+
+@bot.chat_command("seen")
+def seen(ctx, who: str):
+    v = bot.viewers.get(who)
+    ctx.reply(f"{who}: {v.messages} messages" if v else f"never seen {who}")
+
+
+class Stats(Config):
+    wins: int = 0
+
+
+@bot.cli("win", mutates=True)
+def win():
+    """Count a win."""
+    stats = bot.store.model("stats", Stats)
+    stats.wins += 1
+    with bot.store.transaction():
+        bot.store.set("last", "win")
+        bot.store.delete("streak_broken")
+    return {"wins": stats.wins}
+
+
+@bot.timers.cron("0 20 * * FRI")
+def friday():
+    bot.chat.send("Friday stream tonight!")
+
+
+@bot.timers.every("10m", only_if_chat_active=True)
+def lively():
+    bot.chat.send("Chat is lively")
 
 
 bot.run()

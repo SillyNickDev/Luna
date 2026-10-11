@@ -8,8 +8,9 @@
         t.emit("twitch.channel.follow", user="fox")
         assert t.chat.sent == ["Welcome to the pack, fox!"]
 
-Permissions from the plugin's plugin.toml are enforced, so a missing entry fails the
-test instead of surprising you after install. Time is fake: t.clock.advance("2m").
+Permissions from the plugin's plugin.toml are enforced, and chat commands are only routed
+to users whose rank has the command's capability, so a missing entry fails the test
+instead of surprising you after install. Time is fake: t.clock.advance("2m").
 """
 
 import json
@@ -18,14 +19,34 @@ import shlex
 import tomllib
 
 from . import _bot, errors
-from ._bot import Event, Obj, bot, seconds
+from ._bot import Event, Obj, User, bot, seconds
 
 _bot.TESTING = True
+
+# Luna's default capability table: the lowest rank holding each capability.
+_MIN_RANK = {
+    "chat.commands.use": "viewer", "mod.delete": "moderator", "mod.timeout": "moderator", "mod.warn": "moderator",
+    "mod.ban": "moderator", "mod.undo.own": "moderator", "mod.notes": "moderator", "mod.shield": "moderator",
+    "stream.shoutout": "moderator", "commands.edit": "moderator", "mod.undo.others": "luna-mod",
+    "filters.edit": "luna-mod", "giveaway.run": "luna-mod", "points.adjust": "luna-mod", "stream.edit": "luna-mod",
+    "luna.chat_cli": "luna-mod", "mod.lock": "head-mod", "perms.approve_luna_mods": "head-mod",
+}
+_RANKS = _bot._RANKS
+
+
+def can(rank, capability):
+    """Whether a rank holds a capability under Luna's defaults (no per-user grants)."""
+    if rank == "broadcaster":
+        return True
+    if capability.startswith("mod.") and _RANKS.index(rank) < 1:
+        return False
+    want = _MIN_RANK.get(capability)
+    return want is not None and _RANKS.index(rank) >= _RANKS.index(want)
 
 
 class Clock:
     def __init__(self):
-        self.now = 1_000_000.0
+        self.now = 1767268800.0  # 2026-01-01 12:00 UTC
 
     def __call__(self):
         return self.now
@@ -42,9 +63,25 @@ class Clock:
         bot._run_due()
 
 
-class _Recorder:
+class _Chat:
     def __init__(self):
-        self.sent = []
+        self.sent = []      # every message's text
+        self.messages = []  # with how it was sent: {"text", "mode", "to", "reply_to"}
+
+
+class _Mod:
+    def __init__(self):
+        self.actions = []  # ("timeout", "id-fox", 60), ("delete", "msg-3"), ("shield", True), ...
+
+
+class _Twitch:
+    """Fake Twitch data: t.twitch.users["fox"] = {...}; t.twitch.stream = {"live": True, ...}."""
+
+    def __init__(self):
+        self.users = {}     # login → {"id", "login", "name", "created_at"}
+        self.channels = {}  # id ("" = this channel) → {"game", "title", ...}
+        self.stream = {"live": False}
+        self.follows = {}   # user id → "2025-03-01T12:00:00Z"
 
 
 class Result:
@@ -52,15 +89,64 @@ class Result:
         self.replies = replies
 
 
+_MOD_PERM = {"timeout": "timeout", "ban": "ban", "delete": "delete", "warn": "warn", "shield": "shield",
+             "shoutout": "shoutout"}
+
+
 class _Fake:
-    """The transport, faked: records chat and logs, keeps the store in memory."""
+    """The transport, faked: records chat and moderation, keeps the store in memory, and
+    refuses what plugin.toml doesn't allow, with Luna's own messages."""
 
     def __init__(self, h):
         self.h = h
 
-    def chat_send(self, text, simulated, reply_to):
-        self.h._need_chat()
+    def _need(self, group, item, line):
+        p = self.h.perms
+        if p is not None and item not in p.get(group, []):
+            raise errors.PermissionDenied(f"add {line} to plugin.toml")
+
+    def chat_send(self, text, simulated, reply_to, mode="", to=""):
+        need = mode or "send"
+        self._need("chat", need, f'"{need}" to [permissions].chat')
         self.h.chat.sent.append(text)
+        self.h.chat.messages.append({"text": text, "mode": mode, "to": to, "reply_to": reply_to})
+
+    def mod(self, req):
+        action = req["action"]
+        need = _MOD_PERM.get(action)
+        if action == "unban":
+            have = (self.h.perms or {}).get("mod", [])
+            need = "timeout" if "timeout" in have or self.h.perms is None else "ban"
+        if need is None:
+            raise errors.LunaError(f"unknown mod action {action!r}")
+        self._need("mod", need, f'"{need}" to [permissions].mod')
+        if action == "timeout" and not 1 <= req.get("seconds", 0) <= 1209600:
+            raise errors.LunaError("a timeout is 1 s to 14 days")
+        detail = {"timeout": lambda: (req["user_id"], req["seconds"]), "delete": lambda: (req["message_id"],),
+                  "shield": lambda: (req["on"],)}.get(action, lambda: (req["user_id"],))()
+        self.h.mod.actions.append((action, *detail))
+
+    def twitch(self, call, user):
+        self._need("twitch", "read", '"read" to [permissions].twitch')
+        tw = self.h.twitch
+        v = None
+        if call == "user":
+            v = next((u for u in tw.users.values()
+                      if user.lower() in (str(u.get("login", "")).lower(), str(u.get("id", "")))), None)
+        elif call == "channel":
+            v = tw.channels.get(user)
+        elif call == "stream":
+            v = tw.stream
+        elif call == "follow":
+            v = {"followed_at": tw.follows[user]} if user in tw.follows else None
+        return json.dumps(v).encode()
+
+    def viewer(self, user):
+        p = self.h.perms
+        if p is not None and not p.get("viewers"):
+            raise errors.PermissionDenied("add viewers = true to [permissions] to plugin.toml")
+        v = self.h.viewers.get(user) or next((v for v in self.h.viewers.values() if v.get("login") == user), None)
+        return json.dumps(v).encode()
 
     def _store(self):
         self.h._need_store()
@@ -78,6 +164,13 @@ class _Fake:
 
     def store_delete(self, key):
         self._store().pop(key, None)
+
+    def store_batch(self, sets, deletes):
+        s = self._store()
+        for k, v, ttl in sets:
+            s[k] = (v, self.h.clock.now + ttl / 1000 if ttl else 0)
+        for k in deletes:
+            s.pop(k, None)
 
     def store_incr(self, key, by):
         s = self._store()
@@ -108,22 +201,29 @@ class _Fake:
 
 class Harness:
     def __init__(self, plugin, config):
-        self.chat = _Recorder()
+        import asyncio
+        self.chat, self.mod, self.twitch = _Chat(), _Mod(), _Twitch()
+        self.viewers = {}  # user id → profile dict, for bot.viewers.get
         self.store, self.logs, self.emitted = {}, [], []
         self.clock = Clock()
         self._links, self._down, self._cooldowns = {}, set(), {}
+        self._n = 0
         self.perms = self._permissions(plugin)
         bot._t = _Fake(self)
         bot.clock = self.clock
         bot.id = "dev.test.plugin"
         bot._timers.clear()
+        bot._waiters.clear()
+        if bot._loop is not None:
+            bot._loop.close()
+        bot._loop = asyncio.new_event_loop()
         for h in bot._handlers:
             h.done = False
-            if self.perms is not None and not _allowed(self.perms.get("events", []), h.type):
-                raise errors.PermissionDenied(f'add "{h.type}" to [permissions].events in plugin.toml')
+        for typ in sorted(bot._subscribed()):
+            if self.perms is not None and not _allowed(self.perms.get("events", []), typ):
+                raise errors.PermissionDenied(f'add "{typ}" to [permissions].events in plugin.toml')
         bot.config = bot._config_cls._load(config or {}) if bot._config_cls else Obj(config or {})
-        for interval, fn in bot.timers._every:
-            bot._schedule(interval, fn, interval)
+        bot.timers._start()
         for fn in bot.lifecycle.start:
             bot._call(fn)
 
@@ -136,19 +236,19 @@ class Harness:
         with open(path, "rb") as fh:
             return tomllib.load(fh).get("permissions", {})
 
-    def _need_chat(self):
-        if self.perms is not None and "send" not in self.perms.get("chat", []):
-            raise errors.PermissionDenied('add "send" to [permissions].chat in plugin.toml')
-
     def _need_store(self):
         if self.perms is not None and not self.perms.get("store"):
             raise errors.PermissionDenied("add store = true to [permissions] in plugin.toml")
+
+    def _id(self, prefix):
+        self._n += 1
+        return f"{prefix}-{self._n}"
 
     def emit(self, type, simulated=True, **data):
         """Fire an event at the plugin. user="fox" is shorthand for a viewer named fox."""
         if isinstance(data.get("user"), str):
             data["user"] = _user(data["user"])
-        ev = Event(f"test-{len(self.chat.sent)}", type, "test", self.clock.now, simulated, data)
+        ev = Event(self._id("test"), type, "test", self.clock.now, simulated, data)
         bot._dispatch(ev, inline=True)
         return ev
 
@@ -165,23 +265,28 @@ class Harness:
         return data if data is not None else text
 
     def chat_command(self, line, user="testviewer", roles=()):
-        """Type a chat line like "!hr" as user; returns what the plugin replied.
-        shortcut: capabilities aren't checked here, only cooldowns."""
-        words = shlex.split(line)
-        name = words[0].lstrip("!")
+        """Type a chat line as user; returns what the plugin said in response. Roles are Twitch
+        badges ("sub", "vip", "moderator", "broadcaster") or Luna ranks ("luna-mod", "head-mod").
+        Like Luna, a !command reaches the plugin only if the user's rank has its capability
+        and it's off cooldown; every line is also a twitch.chat.message event."""
+        before = len(self.chat.sent)
+        u = _user(user, roles)
+        ev = Event(self._id("test"), "twitch.chat.message", "test", self.clock.now, True,
+                   {"user": u, "text": line, "message_id": self._id("msg")})
+        bot._dispatch(ev, inline=True)
+        words = shlex.split(line) if line.startswith("!") else []
+        name = words[0][1:].lower() if words else ""
         cmd = bot._chat_cmds.get(name) or next(
             (c for c in bot._chat_cmds.values() if name in c["aliases"]), None)
-        if cmd is None:
-            return Result([])
+        if cmd is None or not can(u["rank"], cmd["capability"] or "chat.commands.use"):
+            return Result(self.chat.sent[before:])
         now = self.clock.now
-        for key, cd in ((cmd["name"], cmd["cooldown"]), ((cmd["name"], user), cmd["user_cooldown"])):
-            if cd and self._cooldowns.get(key, -1e18) + seconds(cd) > now:
-                return Result([])  # Luna drops commands on cooldown before the plugin sees them
-        for key, cd in ((cmd["name"], cmd["cooldown"]), ((cmd["name"], user), cmd["user_cooldown"])):
+        keys = ((cmd["name"], cmd["cooldown"]), ((cmd["name"], user), cmd["user_cooldown"]))
+        if any(cd and self._cooldowns.get(key, -1e18) + seconds(cd) > now for key, cd in keys):
+            return Result(self.chat.sent[before:])  # Luna drops commands on cooldown before the plugin sees them
+        for key, cd in keys:
             if cd:
                 self._cooldowns[key] = now
-        before = len(self.chat.sent)
-        ev = Event("test-cmd", "twitch.chat.message", "test", now, True, {"user": _user(user, roles), "text": line})
         bot._command("chat", cmd["name"], {"args": words[1:]}, ev)
         return Result(self.chat.sent[before:])
 
@@ -199,9 +304,16 @@ def _allowed(perms, typ):
 
 
 def _user(login, roles=()):
-    return {"id": "test-" + login, "login": login, "roles": list(roles)}
+    roles = list(roles)
+    rank = next((r for r in ("broadcaster", "head-mod", "luna-mod", "moderator") if r in roles), "viewer")
+    if rank in ("head-mod", "luna-mod"):
+        roles.append("moderator")
+    return {"id": "test-" + login, "login": login, "name": login, "roles": roles, "rank": rank}
 
 
 def harness(plugin=None, config=None):
     """A fresh fake Luna for the plugin module (already imported)."""
     return Harness(plugin, config)
+
+
+__all__ = ["harness", "Harness", "Clock", "Result", "can", "User"]

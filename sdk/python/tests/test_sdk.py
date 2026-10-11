@@ -1,6 +1,10 @@
 import os
 import sys
+import time
 import unittest
+
+os.environ["TZ"] = "UTC"  # cron runs in local time
+time.tzset()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [os.path.join(HERE, ".."), os.path.join(HERE, "example")]
@@ -65,7 +69,7 @@ class SDKTest(unittest.TestCase):
 
     def test_describe(self):
         d = main.bot.describe()
-        self.assertEqual(d["events"], ["hr.update", "twitch.channel.follow", "twitch.channel.redeem"])
+        self.assertEqual(d["events"], ["hr.update", "twitch.channel.follow", "twitch.channel.redeem", "twitch.chat.message"])
         self.assertEqual(d["config"], {"threshold": {"type": "int", "default": 140}})
         cli = d["cli"][0]
         self.assertEqual((cli["args"], cli["flags"]), ([{"name": "bpm", "type": "int", "optional": True}],
@@ -78,6 +82,60 @@ class SDKTest(unittest.TestCase):
         with self.assertRaises(PermissionDenied) as e:
             main.bot.chat.send("hi")
         self.assertIn('add "send" to [permissions].chat', str(e.exception))
+
+    def test_wait_for(self):
+        t = harness(main)
+        self.assertEqual(t.chat_command("!fight wolf", user="fox").replies, ["wolf, type !accept within 30s"])
+        t.chat_command("!accept", user="owl")  # not the one challenged
+        self.assertEqual(t.chat_command("!accept", user="wolf").replies, ["Fight!"])
+        t.chat_command("!fight bear", user="fox")
+        t.clock.advance("31s")
+        self.assertEqual(t.chat.sent[-1], "bear chickened out")
+
+    def test_mod_twitch_viewers(self):
+        t = harness(main)
+        t.twitch.users["wolf"] = {"id": "id-wolf", "login": "wolf", "name": "Wolf"}
+        self.assertEqual(t.chat_command("!zap wolf", user="fox").replies, [])  # viewers lack mod.timeout
+        self.assertEqual(t.chat_command("!zap wolf", user="owl", roles=["moderator"]).replies, ["Wolf got zapped"])
+        self.assertEqual(t.mod.actions, [("timeout", "id-wolf", 600)])
+        self.assertEqual(t.chat.messages[-1]["mode"], "announce")
+        self.assertEqual(t.chat_command("!zap ghost", user="owl", roles=["moderator"]).replies, ["no user ghost"])
+        t.viewers["id-fox"] = {"id": "id-fox", "login": "fox", "messages": 12}
+        self.assertEqual(t.chat_command("!seen fox").replies, ["fox: 12 messages"])
+        reply = t.chat.messages[-1]
+        self.assertTrue(reply["reply_to"].startswith("msg-"), reply)
+
+    def test_mod_permission(self):
+        t = harness(main)
+        t.perms = dict(t.perms, mod=[])
+        with self.assertRaises(PermissionDenied) as e:
+            main.bot.mod.timeout("id-x")
+        self.assertIn('"timeout" to [permissions].mod', str(e.exception))
+
+    def test_store_model_and_transaction(self):
+        t = harness(main)
+        t.store["streak_broken"] = (b"true", 0)
+        self.assertEqual(t.cli("win"), {"wins": 1})
+        self.assertEqual(t.cli("win"), {"wins": 2})
+        self.assertNotIn("streak_broken", t.store)
+        self.assertEqual(t.store["last"][0], b'"win"')
+
+    def test_cron_and_chat_activity(self):
+        t = harness(main)
+        t.clock.advance("33h")  # Thursday 12:00 UTC to Friday 21:00
+        self.assertEqual(t.chat.sent.count("Friday stream tonight!"), 1)
+        self.assertNotIn("Chat is lively", t.chat.sent)  # nobody chatted
+        t.chat_command("hello all", user="fox")
+        t.clock.advance("10m")
+        self.assertEqual(t.chat.sent.count("Chat is lively"), 1)
+
+    def test_cron_parse(self):
+        from luna._bot import _cron, _cron_due
+        c = _cron("*/15 9-17 * * MON-FRI")
+        self.assertTrue(_cron_due(c, time.gmtime(1767355200)))  # Fri 2026-01-02 12:00
+        self.assertFalse(_cron_due(c, time.gmtime(1767441600)))  # Sat
+        with self.assertRaises(ValueError):
+            _cron("61 * * * *")
 
 
 if __name__ == "__main__":

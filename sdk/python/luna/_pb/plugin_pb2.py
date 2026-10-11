@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cplugin.proto\x12\x0eluna.plugin.v1\"\x07\n\x05\x45mpty\"(\n\x0cHelloRequest\x12\x0b\n\x03\x61pi\x18\x01 \x01(\t\x12\x0b\n\x03sdk\x18\x02 \x01(\t\":\n\nHelloReply\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x63onfig_json\x18\x02 \x01(\x0c\x12\x0b\n\x03\x64\x65v\x18\x03 \x01(\x08\"!\n\x10SubscribeRequest\x12\r\n\x05types\x18\x01 \x03(\t\"f\n\x05\x45vent\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0e\n\x06source\x18\x03 \x01(\t\x12\r\n\x05ts_ms\x18\x04 \x01(\x03\x12\x11\n\tsimulated\x18\x05 \x01(\x08\x12\x11\n\tdata_json\x18\x06 \x01(\x0c\"j\n\x07\x43ommand\x12\n\n\x02id\x18\x01 \x01(\x04\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\x12\x11\n\targs_json\x18\x04 \x01(\x0c\x12$\n\x05\x65vent\x18\x05 \x01(\x0b\x32\x15.luna.plugin.v1.Event\"K\n\rCommandResult\x12\n\n\x02id\x18\x01 \x01(\x04\x12\x11\n\tdata_json\x18\x02 \x01(\x0c\x12\x0c\n\x04text\x18\x03 \x01(\t\x12\r\n\x05\x65rror\x18\x04 \x01(\t\"D\n\x0f\x43hatSendRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x11\n\tsimulated\x18\x02 \x01(\x08\x12\x10\n\x08reply_to\x18\x03 \x01(\t\"\x17\n\x08StoreKey\x12\x0b\n\x03key\x18\x01 \x01(\t\"/\n\nStoreValue\x12\r\n\x05\x66ound\x18\x01 \x01(\x08\x12\x12\n\nvalue_json\x18\x02 \x01(\x0c\"B\n\x0fStoreSetRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x12\n\nvalue_json\x18\x02 \x01(\x0c\x12\x0e\n\x06ttl_ms\x18\x03 \x01(\x03\"+\n\x10StoreIncrRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\n\n\x02\x62y\x18\x02 \x01(\x03\"\x1f\n\x0eStoreIncrReply\x12\r\n\x05value\x18\x01 \x01(\x03\"\"\n\x10StoreKeysRequest\x12\x0e\n\x06prefix\x18\x01 \x01(\t\"\x1e\n\x0eStoreKeysReply\x12\x0c\n\x04keys\x18\x01 \x03(\t\"(\n\nLogRequest\x12\r\n\x05level\x18\x01 \x01(\t\x12\x0b\n\x03msg\x18\x02 \x01(\t\".\n\x0b\x45mitRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x11\n\tdata_json\x18\x02 \x01(\x0c\x32\xf7\x05\n\x04Host\x12\x41\n\x05Hello\x12\x1c.luna.plugin.v1.HelloRequest\x1a\x1a.luna.plugin.v1.HelloReply\x12\x46\n\tSubscribe\x12 .luna.plugin.v1.SubscribeRequest\x1a\x15.luna.plugin.v1.Event0\x01\x12\x46\n\x08\x43ommands\x12\x1d.luna.plugin.v1.CommandResult\x1a\x17.luna.plugin.v1.Command(\x01\x30\x01\x12\x42\n\x08\x43hatSend\x12\x1f.luna.plugin.v1.ChatSendRequest\x1a\x15.luna.plugin.v1.Empty\x12@\n\x08StoreGet\x12\x18.luna.plugin.v1.StoreKey\x1a\x1a.luna.plugin.v1.StoreValue\x12\x42\n\x08StoreSet\x12\x1f.luna.plugin.v1.StoreSetRequest\x1a\x15.luna.plugin.v1.Empty\x12>\n\x0bStoreDelete\x12\x18.luna.plugin.v1.StoreKey\x1a\x15.luna.plugin.v1.Empty\x12M\n\tStoreIncr\x12 .luna.plugin.v1.StoreIncrRequest\x1a\x1e.luna.plugin.v1.StoreIncrReply\x12M\n\tStoreKeys\x12 .luna.plugin.v1.StoreKeysRequest\x1a\x1e.luna.plugin.v1.StoreKeysReply\x12\x38\n\x03Log\x12\x1a.luna.plugin.v1.LogRequest\x1a\x15.luna.plugin.v1.Empty\x12:\n\x04\x45mit\x12\x1b.luna.plugin.v1.EmitRequest\x1a\x15.luna.plugin.v1.EmptyB\x19Z\x17luna/internal/plugin/pbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cplugin.proto\x12\x0eluna.plugin.v1\"\x07\n\x05\x45mpty\"(\n\x0cHelloRequest\x12\x0b\n\x03\x61pi\x18\x01 \x01(\t\x12\x0b\n\x03sdk\x18\x02 \x01(\t\":\n\nHelloReply\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x63onfig_json\x18\x02 \x01(\x0c\x12\x0b\n\x03\x64\x65v\x18\x03 \x01(\x08\"!\n\x10SubscribeRequest\x12\r\n\x05types\x18\x01 \x03(\t\"f\n\x05\x45vent\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0e\n\x06source\x18\x03 \x01(\t\x12\r\n\x05ts_ms\x18\x04 \x01(\x03\x12\x11\n\tsimulated\x18\x05 \x01(\x08\x12\x11\n\tdata_json\x18\x06 \x01(\x0c\"j\n\x07\x43ommand\x12\n\n\x02id\x18\x01 \x01(\x04\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\x12\x11\n\targs_json\x18\x04 \x01(\x0c\x12$\n\x05\x65vent\x18\x05 \x01(\x0b\x32\x15.luna.plugin.v1.Event\"K\n\rCommandResult\x12\n\n\x02id\x18\x01 \x01(\x04\x12\x11\n\tdata_json\x18\x02 \x01(\x0c\x12\x0c\n\x04text\x18\x03 \x01(\t\x12\r\n\x05\x65rror\x18\x04 \x01(\t\"f\n\x0f\x43hatSendRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x11\n\tsimulated\x18\x02 \x01(\x08\x12\x10\n\x08reply_to\x18\x03 \x01(\t\x12\x0c\n\x04mode\x18\x04 \x01(\t\x12\x12\n\nto_user_id\x18\x05 \x01(\t\"\x81\x01\n\nModRequest\x12\x0e\n\x06\x61\x63tion\x18\x01 \x01(\t\x12\x0f\n\x07user_id\x18\x02 \x01(\t\x12\x0f\n\x07seconds\x18\x03 \x01(\x03\x12\x0e\n\x06reason\x18\x04 \x01(\t\x12\x12\n\nmessage_id\x18\x05 \x01(\t\x12\n\n\x02on\x18\x06 \x01(\x08\x12\x11\n\tsimulated\x18\x07 \x01(\x08\"+\n\rTwitchRequest\x12\x0c\n\x04\x63\x61ll\x18\x01 \x01(\t\x12\x0c\n\x04user\x18\x02 \x01(\t\" \n\x0bTwitchReply\x12\x11\n\tdata_json\x18\x01 \x01(\x0c\"\x1d\n\rViewerRequest\x12\x0c\n\x04user\x18\x01 \x01(\t\" \n\x0bViewerReply\x12\x11\n\tdata_json\x18\x01 \x01(\x0c\"Q\n\x11StoreBatchRequest\x12,\n\x03set\x18\x01 \x03(\x0b\x32\x1f.luna.plugin.v1.StoreSetRequest\x12\x0e\n\x06\x64\x65lete\x18\x02 \x03(\t\"\x17\n\x08StoreKey\x12\x0b\n\x03key\x18\x01 \x01(\t\"/\n\nStoreValue\x12\r\n\x05\x66ound\x18\x01 \x01(\x08\x12\x12\n\nvalue_json\x18\x02 \x01(\x0c\"B\n\x0fStoreSetRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x12\n\nvalue_json\x18\x02 \x01(\x0c\x12\x0e\n\x06ttl_ms\x18\x03 \x01(\x03\"+\n\x10StoreIncrRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\n\n\x02\x62y\x18\x02 \x01(\x03\"\x1f\n\x0eStoreIncrReply\x12\r\n\x05value\x18\x01 \x01(\x03\"\"\n\x10StoreKeysRequest\x12\x0e\n\x06prefix\x18\x01 \x01(\t\"\x1e\n\x0eStoreKeysReply\x12\x0c\n\x04keys\x18\x01 \x03(\t\"(\n\nLogRequest\x12\r\n\x05level\x18\x01 \x01(\t\x12\x0b\n\x03msg\x18\x02 \x01(\t\".\n\x0b\x45mitRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x11\n\tdata_json\x18\x02 \x01(\x0c\x32\x85\x08\n\x04Host\x12\x41\n\x05Hello\x12\x1c.luna.plugin.v1.HelloRequest\x1a\x1a.luna.plugin.v1.HelloReply\x12\x46\n\tSubscribe\x12 .luna.plugin.v1.SubscribeRequest\x1a\x15.luna.plugin.v1.Event0\x01\x12\x46\n\x08\x43ommands\x12\x1d.luna.plugin.v1.CommandResult\x1a\x17.luna.plugin.v1.Command(\x01\x30\x01\x12\x42\n\x08\x43hatSend\x12\x1f.luna.plugin.v1.ChatSendRequest\x1a\x15.luna.plugin.v1.Empty\x12\x38\n\x03Mod\x12\x1a.luna.plugin.v1.ModRequest\x1a\x15.luna.plugin.v1.Empty\x12\x44\n\x06Twitch\x12\x1d.luna.plugin.v1.TwitchRequest\x1a\x1b.luna.plugin.v1.TwitchReply\x12\x44\n\x06Viewer\x12\x1d.luna.plugin.v1.ViewerRequest\x1a\x1b.luna.plugin.v1.ViewerReply\x12@\n\x08StoreGet\x12\x18.luna.plugin.v1.StoreKey\x1a\x1a.luna.plugin.v1.StoreValue\x12\x42\n\x08StoreSet\x12\x1f.luna.plugin.v1.StoreSetRequest\x1a\x15.luna.plugin.v1.Empty\x12>\n\x0bStoreDelete\x12\x18.luna.plugin.v1.StoreKey\x1a\x15.luna.plugin.v1.Empty\x12M\n\tStoreIncr\x12 .luna.plugin.v1.StoreIncrRequest\x1a\x1e.luna.plugin.v1.StoreIncrReply\x12M\n\tStoreKeys\x12 .luna.plugin.v1.StoreKeysRequest\x1a\x1e.luna.plugin.v1.StoreKeysReply\x12\x46\n\nStoreBatch\x12!.luna.plugin.v1.StoreBatchRequest\x1a\x15.luna.plugin.v1.Empty\x12\x38\n\x03Log\x12\x1a.luna.plugin.v1.LogRequest\x1a\x15.luna.plugin.v1.Empty\x12:\n\x04\x45mit\x12\x1b.luna.plugin.v1.EmitRequest\x1a\x15.luna.plugin.v1.EmptyB\x19Z\x17luna/internal/plugin/pbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -47,25 +47,37 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_COMMANDRESULT']._serialized_start=390
   _globals['_COMMANDRESULT']._serialized_end=465
   _globals['_CHATSENDREQUEST']._serialized_start=467
-  _globals['_CHATSENDREQUEST']._serialized_end=535
-  _globals['_STOREKEY']._serialized_start=537
-  _globals['_STOREKEY']._serialized_end=560
-  _globals['_STOREVALUE']._serialized_start=562
-  _globals['_STOREVALUE']._serialized_end=609
-  _globals['_STORESETREQUEST']._serialized_start=611
-  _globals['_STORESETREQUEST']._serialized_end=677
-  _globals['_STOREINCRREQUEST']._serialized_start=679
-  _globals['_STOREINCRREQUEST']._serialized_end=722
-  _globals['_STOREINCRREPLY']._serialized_start=724
-  _globals['_STOREINCRREPLY']._serialized_end=755
-  _globals['_STOREKEYSREQUEST']._serialized_start=757
-  _globals['_STOREKEYSREQUEST']._serialized_end=791
-  _globals['_STOREKEYSREPLY']._serialized_start=793
-  _globals['_STOREKEYSREPLY']._serialized_end=823
-  _globals['_LOGREQUEST']._serialized_start=825
-  _globals['_LOGREQUEST']._serialized_end=865
-  _globals['_EMITREQUEST']._serialized_start=867
-  _globals['_EMITREQUEST']._serialized_end=913
-  _globals['_HOST']._serialized_start=916
-  _globals['_HOST']._serialized_end=1675
+  _globals['_CHATSENDREQUEST']._serialized_end=569
+  _globals['_MODREQUEST']._serialized_start=572
+  _globals['_MODREQUEST']._serialized_end=701
+  _globals['_TWITCHREQUEST']._serialized_start=703
+  _globals['_TWITCHREQUEST']._serialized_end=746
+  _globals['_TWITCHREPLY']._serialized_start=748
+  _globals['_TWITCHREPLY']._serialized_end=780
+  _globals['_VIEWERREQUEST']._serialized_start=782
+  _globals['_VIEWERREQUEST']._serialized_end=811
+  _globals['_VIEWERREPLY']._serialized_start=813
+  _globals['_VIEWERREPLY']._serialized_end=845
+  _globals['_STOREBATCHREQUEST']._serialized_start=847
+  _globals['_STOREBATCHREQUEST']._serialized_end=928
+  _globals['_STOREKEY']._serialized_start=930
+  _globals['_STOREKEY']._serialized_end=953
+  _globals['_STOREVALUE']._serialized_start=955
+  _globals['_STOREVALUE']._serialized_end=1002
+  _globals['_STORESETREQUEST']._serialized_start=1004
+  _globals['_STORESETREQUEST']._serialized_end=1070
+  _globals['_STOREINCRREQUEST']._serialized_start=1072
+  _globals['_STOREINCRREQUEST']._serialized_end=1115
+  _globals['_STOREINCRREPLY']._serialized_start=1117
+  _globals['_STOREINCRREPLY']._serialized_end=1148
+  _globals['_STOREKEYSREQUEST']._serialized_start=1150
+  _globals['_STOREKEYSREQUEST']._serialized_end=1184
+  _globals['_STOREKEYSREPLY']._serialized_start=1186
+  _globals['_STOREKEYSREPLY']._serialized_end=1216
+  _globals['_LOGREQUEST']._serialized_start=1218
+  _globals['_LOGREQUEST']._serialized_end=1258
+  _globals['_EMITREQUEST']._serialized_start=1260
+  _globals['_EMITREQUEST']._serialized_end=1306
+  _globals['_HOST']._serialized_start=1309
+  _globals['_HOST']._serialized_end=2338
 # @@protoc_insertion_point(module_scope)

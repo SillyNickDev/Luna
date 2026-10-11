@@ -7,6 +7,9 @@ runtime = "python-3.12"
 entry = "main.py"
 
 [permissions]
-events = ["hr.update", "twitch.channel.*"]
-chat = ["send"]
+events = ["hr.update", "twitch.channel.*", "twitch.chat.message"]
+chat = ["send", "announce"]
 store = true
+mod = ["timeout"]
+twitch = ["read"]
+viewers = true
