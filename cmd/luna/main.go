@@ -10,12 +10,17 @@ import (
 	"strings"
 
 	"luna/internal/capsule/sandbox"
-	"luna/internal/config"
 )
 
 const usageText = `usage: luna [--config <dir>] <command>
 
-  run                   start the daemon
+  setup [step]          take a fresh install to a running bot
+  daemon                run the bot in the foreground (also: run)
+  start | stop | restart
+                        control the systemd user service
+  status | version      what's running; versions of Luna, the plugin API, capsule spec
+  logs [-f] [--capsule <name>]
+  events tail [--type twitch.*] [--json] | chat tail
   sim <event> [flags]   fire a simulated event (luna sim --list)
   events sessions | replay <n> [--speed N]
                         list recorded streams, replay one as simulated events
@@ -26,7 +31,7 @@ const usageText = `usage: luna [--config <dir>] <command>
   perms show | set <user> <rank> | check <user> <capability>
                         ranks: viewer, moderator, luna-mod, head-mod
   chat say <text>       send a chat message through the output guard
-  config validate       check luna.toml without applying it
+  config show [key] | get <key> | set <key> <value> | edit | validate
   capsule install [--yes] <folder|file.capsule>
   capsule list | enable | disable | restart | logs | inspect <name>
   capsule uninstall <name> [--keep-data]
@@ -37,7 +42,11 @@ const usageText = `usage: luna [--config <dir>] <command>
                         a plugin's own commands (luna <plugin> --help)
 `
 
-type paths struct{ config, data, sock string }
+type paths struct {
+	config, data, sock string
+	confDir            string
+	custom             bool // --config was given
+}
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == sandbox.InitArg {
@@ -55,8 +64,24 @@ func main() {
 		case len(args) == 0:
 			fs.Usage()
 			os.Exit(2)
-		case args[0] == "run":
+		case args[0] == "events" && len(args) > 1 && args[1] == "tail":
+			err = eventsTail(p, args[2:], false)
+		case args[0] == "chat" && len(args) > 1 && args[1] == "tail":
+			err = eventsTail(p, args[2:], true)
+		case args[0] == "run", args[0] == "daemon":
 			err = runDaemon(p)
+		case args[0] == "version":
+			fmt.Println(versionText())
+		case args[0] == "status":
+			err = call(p, request{Cmd: "status"})
+		case args[0] == "start", args[0] == "stop", args[0] == "restart":
+			err = serviceCLI(args[0])
+		case args[0] == "setup":
+			err = setup(p, args[1:])
+		case args[0] == "logs":
+			err = logsCLI(p, args[1:])
+		case args[0] == "config":
+			err = configCLI(p, args[1:])
 		case args[0] == "sim" && len(args) > 1 && args[1] == "--list":
 			for _, s := range simList {
 				fmt.Printf("  %-7s %-26s luna sim %s %s\n", s.name, s.typ, s.name, s.usage)
@@ -69,10 +94,6 @@ func main() {
 			err = call(p, request{Cmd: "chat", Args: args[2:]})
 		case args[0] == "capsule":
 			err = capsuleCLI(p, args[1:])
-		case args[0] == "config" && len(args) == 2 && args[1] == "validate":
-			if _, err = config.Load(p.config); err == nil {
-				fmt.Println("config ok:", p.config)
-			}
 		case args[0] == "plugin" && len(args) > 1:
 			err = call(p, request{Cmd: "plugin", Args: args[1:]})
 		case !strings.HasPrefix(args[0], "-"):
@@ -95,6 +116,12 @@ func main() {
 // resolvePaths uses ~/.config/luna and ~/.local/share/luna (OS equivalents elsewhere).
 // --config <dir> keeps everything, data included, under that dir so a second channel can't collide.
 func resolvePaths(confDir string) (paths, error) {
+	custom := confDir != ""
+	if custom {
+		if abs, err := filepath.Abs(confDir); err == nil {
+			confDir = abs
+		}
+	}
 	var dataDir string
 	switch {
 	case confDir != "":
@@ -118,8 +145,10 @@ func resolvePaths(confDir string) (paths, error) {
 		confDir = filepath.Join(base, "luna")
 	}
 	return paths{
-		config: filepath.Join(confDir, "luna.toml"),
-		data:   dataDir,
-		sock:   filepath.Join(dataDir, "luna.sock"),
+		custom:  custom,
+		confDir: confDir,
+		config:  filepath.Join(confDir, "luna.toml"),
+		data:    dataDir,
+		sock:    filepath.Join(dataDir, "luna.sock"),
 	}, nil
 }

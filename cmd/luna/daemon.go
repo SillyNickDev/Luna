@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"luna/internal/bus"
+	"luna/internal/capsule"
 	"luna/internal/config"
 	"luna/internal/event"
 	"luna/internal/guard"
@@ -29,6 +32,7 @@ func runDaemon(p paths) error {
 	if os.Geteuid() == 0 {
 		return errors.New("refusing to run as root")
 	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.MultiWriter(os.Stderr, daemonLog), nil)))
 	cfg, err := config.NewHolder(p.config)
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
@@ -53,10 +57,13 @@ func runDaemon(p paths) error {
 	logSub := b.Subscribe(4096)
 	logged := make(chan struct{})
 	go func() { st.Log(logSub.C); close(logged) }()
-	printSub := b.Subscribe(256)
+	printSub := b.Subscribe(256) // recent events for luna events tail; each one at debug level in the log
 	go func() {
 		for ev := range printSub.C {
-			slog.Info("event", "type", ev.Type, "simulated", ev.Simulated, "data", string(ev.Data))
+			if line, err := json.Marshal(ev); err == nil {
+				recentEvents.Write(append(line, '\n'))
+			}
+			slog.Debug("event", "type", ev.Type, "simulated", ev.Simulated, "data", string(ev.Data))
 		}
 	}()
 
@@ -68,6 +75,8 @@ func runDaemon(p paths) error {
 	defer stop()
 	go func() { <-ctx.Done(); ln.Close() }()
 
+	var caps *capsule.Runtime // set below; a reload before then has no plugins to restart
+	lastPlugins := cfg.Get().Plugins
 	onReload := func(err error) {
 		if err != nil {
 			slog.Error("config not reloaded; keeping the last good one", "err", err)
@@ -75,6 +84,8 @@ func runDaemon(p paths) error {
 		}
 		debug.SetMemoryLimit(int64(cfg.Get().MemoryLimitMiB) << 20)
 		slog.Info("config reloaded")
+		restartChangedPlugins(caps, lastPlugins, cfg.Get().Plugins)
+		lastPlugins = cfg.Get().Plugins
 	}
 	if err := cfg.Watch(ctx, onReload); err != nil {
 		slog.Warn("config file watching off; use luna reload", "err", err)
@@ -83,7 +94,7 @@ func runDaemon(p paths) error {
 	g := guard.New(cfg.Get)
 	tw := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
 	host := &plugin.Host{Bus: b, Publish: publish, Store: st, Guard: g}
-	caps, err := startCapsules(p, st, publish, host, cfg.Get)
+	caps, err = startCapsules(p, st, publish, host, cfg.Get)
 	if err != nil {
 		return fmt.Errorf("capsules: %w", err)
 	}
@@ -119,6 +130,14 @@ func runDaemon(p paths) error {
 			return capsuleCmd(p, req.Args, caps, st)
 		case "plugin":
 			return pluginCLI(ctx, caps, host, req.Args)
+		case "configcheck":
+			return checkPluginSetting(caps, req.Args)
+		case "status":
+			return statusText(caps, g.Headroom()), nil
+		case "logs":
+			return ringSince(daemonLog, req.Args)
+		case "recent":
+			return ringSince(recentEvents, req.Args)
 		case "reload":
 			err := cfg.Reload()
 			onReload(err)
@@ -154,6 +173,7 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 	bc, err := twitch.NewClient(clientID, store, "broadcaster")
 	if err != nil {
 		slog.Warn("running without twitch", "err", err)
+		twitchState = "offline: " + err.Error()
 		return nil
 	}
 	run := func(c *twitch.Client, subs []twitch.Sub) {
@@ -165,8 +185,16 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 	}
 	b := bc.UserID()
 	chatter := bc
+	login := func(account string) string {
+		if t, err := twitch.LoadToken(store, account); err == nil {
+			return t.Login
+		}
+		return "?"
+	}
+	twitchState = "connected as " + login("broadcaster")
 	if bot, err := twitch.NewClient(clientID, store, "bot"); err == nil {
 		chatter = bot
+		twitchState += ", chatting as " + login("bot")
 		run(bot, []twitch.Sub{twitch.ChatSub(b, bot.UserID())})
 		run(bc, twitch.ChannelSubs(b))
 	} else {

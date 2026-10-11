@@ -395,3 +395,61 @@ func (cr *chatRouter) cooldown(id string, cmd *plugin.ChatCommand, user string) 
 	cr.last[g], cr.last[u] = now, now
 	return true
 }
+
+// restartChangedPlugins restarts plugins whose [plugins.<name>] settings changed, since a
+// plugin reads its config when it starts.
+func restartChangedPlugins(rt *capsule.Runtime, before, after map[string]map[string]any) {
+	if rt == nil {
+		return
+	}
+	for _, c := range rt.List() {
+		m := pluginManifest(c)
+		if m.ID == "" {
+			continue
+		}
+		a, _ := json.Marshal(m.Overrides(before))
+		b, _ := json.Marshal(m.Overrides(after))
+		if string(a) != string(b) {
+			slog.Info("plugin settings changed; restarting it", "plugin", c.ID)
+			c.Start()
+		}
+	}
+}
+
+// checkPluginSetting validates `luna config set plugins.<name>.<key> <value>` against the
+// installed plugin's [config] before the file changes.
+func checkPluginSetting(rt *capsule.Runtime, args []string) (string, error) {
+	if len(args) != 3 {
+		return "", errors.New("usage: configcheck <plugin> <key> <value>")
+	}
+	for _, c := range rt.List() {
+		m := pluginManifest(c)
+		if m.ID == "" || m.Overrides(map[string]map[string]any{args[0]: {}}) == nil {
+			continue
+		}
+		f, ok := m.Config[args[1]]
+		if !ok {
+			var keys []string
+			for k := range m.Config {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			if len(keys) == 0 {
+				return "", fmt.Errorf("%s has no settings", c.ID)
+			}
+			return "", fmt.Errorf("%s has no setting %q (it has: %s)", c.ID, args[1], strings.Join(keys, ", "))
+		}
+		var v any
+		if err := json.Unmarshal([]byte(args[2]), &v); err != nil {
+			v = args[2]
+		}
+		if n, ok := v.(float64); ok && f.Type == "int" {
+			v = n
+		}
+		if _, err := plugin.Coerce(f.Type, v); err != nil {
+			return "", fmt.Errorf("%s.%s: %v", args[0], args[1], err)
+		}
+		return "ok", nil
+	}
+	return "", fmt.Errorf("no running plugin is called %q", args[0])
+}

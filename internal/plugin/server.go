@@ -329,3 +329,22 @@ func (s *server) Emit(_ context.Context, r *pb.EmitRequest) (*pb.Empty, error) {
 	s.h.Publish(e)
 	return &pb.Empty{}, nil
 }
+
+// refusal answers every call with the reason Luna won't serve this plugin (a bad
+// [plugins] setting, say), so the plugin logs why instead of a missing socket.
+type refusal struct {
+	pb.UnimplementedHostServer
+	err error
+}
+
+func (r refusal) Hello(context.Context, *pb.HelloRequest) (*pb.HelloReply, error) {
+	return nil, status.Error(codes.FailedPrecondition, r.err.Error())
+}
+
+// ServeRefusal serves only that refusal on ln until it closes.
+func ServeRefusal(ln net.Listener, err error) {
+	g := grpc.NewServer()
+	pb.RegisterHostServer(g, refusal{err: err})
+	g.Serve(ln)
+	g.Stop()
+}

@@ -106,3 +106,14 @@ func (g *Guard) wait(ctx context.Context, per30s int) error {
 		}
 	}
 }
+
+// Headroom is how many messages could go out right now before the rate limit holds them.
+func (g *Guard) Headroom() float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	max := float64(g.cfg().Chat.RateLimit)
+	if g.last.IsZero() {
+		return max
+	}
+	return min(max, g.tokens+time.Since(g.last).Seconds()*max/30)
+}

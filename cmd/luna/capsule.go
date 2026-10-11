@@ -240,8 +240,8 @@ func startCapsules(p paths, st *store.Store, publish func(event.Event), host *pl
 				conf, err = m.EffectiveConfig(m.Overrides(cfg().Plugins))
 			}
 			if err != nil {
-				fmt.Fprintf(c.Logs, "luna: plugin API unavailable: %v\n", err)
-				ln.Close()
+				fmt.Fprintf(c.Logs, "luna: plugin API refused: %v\n", err)
+				plugin.ServeRefusal(ln, err)
 				return
 			}
 			_, dev := devCapsules.Load(c.ID)
