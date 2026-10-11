@@ -175,6 +175,10 @@ func launch(pkg *Unpacked, runtimesDir string) (*launchSpec, error) {
 		return &launchSpec{argv: append([]string{"/luna", m.Entry}, m.Args...),
 			mounts: []sandbox.Mount{{Src: exe, Dst: "/luna"}}}, nil
 	case strings.HasPrefix(m.Runtime, "python-"), strings.HasPrefix(m.Runtime, "node-"):
+		if runtime.GOOS == "windows" {
+			// shortcut: the shared runtimes are Linux builds with an ELF sysroot; add Windows builds when Windows streamers want Python or TypeScript plugins.
+			return nil, fmt.Errorf("runtime_missing: %s runs on Linux only so far; on Windows, luna and native plugins run", m.Runtime)
+		}
 		info, err := ResolveRuntime(runtimesDir, m.Runtime)
 		if err != nil {
 			return nil, err

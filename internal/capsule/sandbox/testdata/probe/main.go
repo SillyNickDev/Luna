@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"syscall"
 	"time"
 )
 
@@ -41,12 +40,6 @@ func main() {
 		if c, err = net.Dial("unix", arg); err == nil {
 			c.Close()
 		}
-	case "unshare":
-		err = syscall.Unshare(syscall.CLONE_NEWUSER)
-	case "mount":
-		err = syscall.Mount("tmpfs", "/data", "tmpfs", 0, "")
-	case "kill":
-		err = syscall.Kill(n, syscall.SIGKILL)
 	case "alloc": // MiB, touched so it counts as RSS
 		b := make([]byte, n<<20)
 		for i := range b {
@@ -56,14 +49,14 @@ func main() {
 		b[0]++
 	case "fork":
 		for i := 0; i < n && err == nil; i++ {
-			err = exec.Command("/proc/self/exe", "sleep").Start()
+			err = exec.Command(self(), "sleep").Start()
 		}
 	case "files":
 		for i := 0; i < n && err == nil; i++ {
 			_, err = os.Open("/dev/null")
 		}
 	case "orphan": // leave a child running, then exit
-		err = exec.Command("/proc/self/exe", "sleep").Start()
+		err = exec.Command(self(), "sleep").Start()
 	case "sleep":
 		time.Sleep(time.Hour)
 	case "exit":
@@ -81,10 +74,20 @@ func main() {
 	case "env":
 		fmt.Println(os.Environ())
 		return
+	default:
+		err = osProbe(os.Args[1], arg, n) // kill, unshare, mount, registry: see probe_<os>.go
 	}
 	if err != nil {
 		fmt.Println("DENIED:", err)
 	} else {
 		fmt.Println("OK")
 	}
+}
+
+func self() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return os.Args[0]
+	}
+	return exe
 }

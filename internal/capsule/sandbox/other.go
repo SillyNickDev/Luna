@@ -1,11 +1,11 @@
-//go:build !linux
+//go:build !linux && !windows
 
 package sandbox
 
 import "errors"
 
-// shortcut: only the Linux backend exists; Windows (AppContainer) is Phase 5, macOS after v1.
-var errUnsupported = errors.New("capsules need the Linux backend for now")
+// shortcut: Linux and Windows backends exist; macOS (Seatbelt) comes after v1.
+var errUnsupported = errors.New("capsules need the Linux or Windows backend for now")
 
 type Proc struct{}
 

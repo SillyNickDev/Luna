@@ -2,7 +2,11 @@
 // It is the one package allowed to use unsafe (Security tab), for seccomp and Landlock.
 package sandbox
 
-import "io"
+import (
+	"io"
+	"path/filepath"
+	"strings"
+)
 
 // InitArg is the hidden argv[1] that makes the luna binary act as a capsule's setup stage.
 const InitArg = "__capsule-init"
@@ -41,4 +45,22 @@ type Exit struct {
 type Check struct {
 	Name, Detail string
 	OK           bool
+}
+
+// hostPath rewrites a capsule path (/pkg/main.ts) to the folder it's mounted from.
+func hostPath(mounts []Mount, p string) (string, bool) {
+	best := -1
+	for i, m := range mounts {
+		if (p == m.Dst || strings.HasPrefix(p, strings.TrimSuffix(m.Dst, "/")+"/")) && (best < 0 || len(m.Dst) > len(mounts[best].Dst)) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return p, false
+	}
+	rest := strings.TrimPrefix(strings.TrimPrefix(p, mounts[best].Dst), "/")
+	if rest == "" {
+		return mounts[best].Src, true
+	}
+	return filepath.Join(mounts[best].Src, filepath.FromSlash(rest)), true
 }

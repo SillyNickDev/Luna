@@ -10,7 +10,7 @@ NODE    ?= node
 GOFLAGS := -trimpath -ldflags="-s -w -X main.lunaVersion=$(VERSION)"
 export CGO_ENABLED := 0
 
-PLATFORMS := linux/amd64 linux/arm64
+PLATFORMS := linux/amd64 linux/arm64 windows/amd64
 VENV      := build/venv
 
 .PHONY: all build test test-go test-py test-node check proto release install uninstall clean help
@@ -51,6 +51,7 @@ release: ## static builds for every platform into dist/, with checksums
 	@mkdir -p dist
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; out=dist/luna-$(VERSION)-$$os-$$arch; \
+		[ $$os = windows ] && out=$$out.exe; \
 		echo "  $$out"; GOOS=$$os GOARCH=$$arch $(GO) build $(GOFLAGS) -o $$out ./cmd/luna || exit 1; \
 	done
 	cd dist && sha256sum luna-$(VERSION)-* > SHA256SUMS-$(VERSION)

@@ -30,3 +30,7 @@ Run them with `go test ./internal/capsule/...` on the target OS.
 Linux results are from kernel 7.2 with Landlock ABI 10 and a systemd user session.
 Without a systemd user session the memory cap falls back to a 1 s RSS watchdog and
 `limits.pids` to `RLIMIT_NPROC`; `luna capsule doctor` reports which applies.
+
+The Windows backend (AppContainer plus a Job Object) has its suite in
+`internal/capsule/sandbox/windows_test.go`, with registry, loopback and child-process probes
+in place of the Linux-only ones. Its column fills in once it has run on Windows 10 1809+.
