@@ -16,13 +16,13 @@ import (
 	"sync"
 	"time"
 
-	"luna/bundle"
 	"luna/internal/capsule"
 	"luna/internal/capsule/sandbox"
 	"luna/internal/config"
 	"luna/internal/event"
 	"luna/internal/plugin"
 	"luna/internal/store"
+	"luna/plugins"
 	"luna/sdk/python"
 )
 
@@ -164,20 +164,20 @@ func installCapsule(p paths, args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: luna capsule install [--yes] <folder|file.capsule>")
+		return errors.New("usage: luna capsule install [--yes] <folder|file.capsule|name>")
 	}
 	src := fs.Arg(0)
-	switch src {
-	case "core", "luna.core", "essentials", "mod", "events", "shoutouts":
-		dir, err := bundlePackage()
+	if _, err := os.Stat(src); err != nil { // a folder named "points" beats the built-in one
+		fp, ok := plugins.Find(src)
+		if !ok {
+			return fmt.Errorf("%s: no such folder, .capsule file or first-party plugin (installing others by name needs the plugin index)", src)
+		}
+		dir, err := firstPartyPackage(fp.Manifest)
 		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(dir)
 		src = dir
-	}
-	if _, err := os.Stat(src); err != nil {
-		return fmt.Errorf("%s: no such folder or .capsule file (installing by name needs the plugin index, which doesn't exist yet)", src)
 	}
 	u, err := capsule.AddToStore(p.capsuleStore(), src)
 	if err != nil {
@@ -212,12 +212,12 @@ func installCapsule(p paths, args []string) error {
 	return call(p, request{Cmd: "capsule", Args: []string{"register", u.Hash, fp}})
 }
 
-// bundlePackage builds the core bundle's package: just its plugin.toml, since it runs
-// on the luna runtime (this binary, as `luna __bundle`).
-func bundlePackage() (string, error) {
-	dir, err := os.MkdirTemp("", "luna-core-")
+// firstPartyPackage builds a first-party plugin's package: just its plugin.toml, since it
+// runs on the luna runtime (this binary, as `luna __points` and so on).
+func firstPartyPackage(manifest []byte) (string, error) {
+	dir, err := os.MkdirTemp("", "luna-plugin-")
 	if err == nil {
-		err = os.WriteFile(filepath.Join(dir, "plugin.toml"), bundle.Manifest, 0o644)
+		err = os.WriteFile(filepath.Join(dir, "plugin.toml"), manifest, 0o644)
 	}
 	if err == nil {
 		err = capsule.WriteLock(dir)

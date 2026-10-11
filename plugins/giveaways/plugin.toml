@@ -1,0 +1,57 @@
+id = "luna.giveaways"
+name = "Giveaways: keyword and ticket giveaways with verifiable draws"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__giveaways"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+events = ["twitch.chat.message", "twitch.stream.online", "twitch.stream.offline"]
+chat = ["send"]
+twitch = ["read"]
+viewers = true
+store = true
+
+[links]
+uses = ["luna.points:spend", "luna.points:add"]   # ticket mode only
+
+[cli]
+name = "giveaways"
+
+[[cli.commands]]
+name = "status"
+summary = "the current giveaway and its entries"
+
+[[cli.commands]]
+name = "export"
+summary = "everything needed to re-run the draws: seed, entries, draws (JSON)"
+
+[[cli.commands]]
+name = "verify"
+summary = "re-run every draw from the seed and entry list, and check the winners match"
+
+[[cli.commands]]
+name = "winners"
+summary = "past winners, newest first, with their viewer history for delivery"
+flags = [{ name = "user", type = "str", optional = true }]
+
+[[chat.commands]]
+name = "giveaway"
+aliases = ["ga"]
+capability = "giveaway.run"
+
+[config]
+live_only = { type = "bool", default = true }
+keyword = { type = "str", default = "!enter" }
+claim_s = { type = "int", default = 120 }
+exclude_mods = { type = "bool", default = false }
+min_account_days = { type = "int", default = 0 }
+winner_cooldown_days = { type = "int", default = 0 }
+sub_luck = { type = "int", default = 1 }
+vip_luck = { type = "int", default = 0 }
+luck_cap = { type = "int", default = 3 }
+start_message = { type = "str", default = "🎁 Giveaway: {prize}! {how}. Fair-draw commitment: {commit}…" }
+winner_message = { type = "str", default = "🎉 {user} wins {prize}! Type anything in chat within {claim} to claim. Seed: {seed}" }

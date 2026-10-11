@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"strings"
 
-	"luna/bundle"
 	"luna/internal/capsule/sandbox"
+	"luna/plugins"
 )
 
 const usageText = `usage: luna [--config <dir>] <command>
@@ -33,7 +33,7 @@ const usageText = `usage: luna [--config <dir>] <command>
                         ranks: viewer, moderator, luna-mod, head-mod
   chat say <text>       send a chat message through the output guard
   config show [key] | get <key> | set <key> <value> | edit | validate
-  capsule install [--yes] <folder|file.capsule|core>
+  capsule install [--yes] <folder|file.capsule|name>
                         core: Essentials, Moderation, Events, Shoutouts
   mod timeline | undo <id>
                         moderation actions, with undo (also: luna core --help)
@@ -56,9 +56,11 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == sandbox.InitArg {
 		sandbox.Init() // luna re-executes itself as each capsule's setup stage
 	}
-	if len(os.Args) > 1 && os.Args[1] == "__bundle" {
-		bundle.Main() // the core bundle's capsule runs a copy of this binary
-		return
+	if len(os.Args) > 1 {
+		if p, ok := plugins.ByEntry(os.Args[1]); ok {
+			p.Main() // a first-party plugin's capsule runs a copy of this binary
+			return
+		}
 	}
 	fs := flag.NewFlagSet("luna", flag.ExitOnError)
 	confDir := fs.String("config", "", "config directory")

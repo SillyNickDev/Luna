@@ -1,0 +1,77 @@
+id = "luna.points"
+name = "Points: loyalty currency, streaks and leaderboards"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__points"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+events = ["twitch.chat.message", "twitch.channel.follow", "twitch.channel.subscribe", "twitch.channel.resub",
+  "twitch.channel.gift", "twitch.channel.cheer", "twitch.channel.raid", "twitch.stream.online", "twitch.stream.offline"]
+chat = ["send"]
+twitch = ["read"]
+viewers = true
+store = true
+
+[links]
+provides = ["balance", "spend", "add"]
+
+[cli]
+name = "points"
+
+[[cli.commands]]
+name = "top"
+summary = "the leaderboard"
+flags = [{ name = "n", type = "int", optional = true }]
+
+[[cli.commands]]
+name = "get"
+summary = "someone's balance"
+args = [{ name = "user", type = "str" }]
+
+[[cli.commands]]
+name = "add"
+summary = "add (or with a negative amount, remove) points"
+args = [{ name = "user", type = "str" }, { name = "amount", type = "int" }]
+mutates = true
+
+[[cli.commands]]
+name = "ledger"
+summary = "recent manual changes, gifts and spending, newest first"
+flags = [{ name = "n", type = "int", optional = true }]
+
+[[cli.commands]]
+name = "undo"
+summary = "reverse a ledger entry"
+args = [{ name = "id", type = "int" }]
+mutates = true
+
+[[chat.commands]]
+name = "points"
+cooldown = { user = "5s" }
+
+[[chat.commands]]
+name = "top"
+cooldown = { global = "10s" }
+
+[[chat.commands]]
+name = "give"
+cooldown = { user = "5s" }
+
+[config]
+name = { type = "str", default = "points" }
+emoji = { type = "str", default = "" }
+watch_points = { type = "int", default = 10 }
+watch_interval_m = { type = "int", default = 5 }
+active_window_m = { type = "int", default = 10 }
+sub_bonus_percent = { type = "int", default = 50 }
+follow_bonus = { type = "int", default = 50 }
+sub_bonus = { type = "int", default = 250 }
+gift_bonus = { type = "int", default = 100 }
+bits_per_100 = { type = "int", default = 10 }
+raid_bonus = { type = "int", default = 100 }
+streak_shout = { type = "bool", default = false }
+streak_message = { type = "str", default = "{user} has been here {streak} streams in a row! 🔥" }
