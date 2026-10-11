@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
 	"reflect"
 	"runtime/debug"
@@ -232,6 +233,7 @@ type Bot struct {
 	Viewers Viewers
 	Log     Log
 	Timers  Timers
+	Links   Links
 
 	CrashOnError bool   // tests: a handler error panics instead of being logged
 	ID           string // set once connected
@@ -246,6 +248,9 @@ type Bot struct {
 	onStart  []func(*Ctx) error
 	onStop   []func(*Ctx) error
 	ctx      context.Context
+	provides map[string]provider
+	uses     []string
+	linkCall func(use string, args any) ([]byte, error)
 
 	tmu     sync.Mutex
 	timers  timerHeap
@@ -257,8 +262,10 @@ type Bot struct {
 
 func New() *Bot {
 	b := &Bot{cli: map[string]*cliCmd{}, chat: map[string]*chatCmd{}, now: time.Now, ctx: context.Background(),
-		wake: make(chan struct{}, 1)}
+		wake: make(chan struct{}, 1), provides: map[string]provider{}}
 	b.Chat, b.Mod, b.Store, b.Twitch, b.Viewers, b.Log, b.Timers = Chat{b}, Mod{b}, Store{b}, Twitch{b}, Viewers{b}, Log{b}, Timers{b}
+	b.Links = Links{b}
+	b.linkCall = (&liveLinks{conns: map[string]linkConn{}}).call
 	return b
 }
 
@@ -389,8 +396,10 @@ func (b *Bot) Describe() map[string]any {
 	if b.config != nil {
 		cfg, _ = configSchema(b.config)
 	}
+	provides := slices.Sorted(maps.Keys(b.provides))
+	uses := slices.Sorted(slices.Values(b.uses))
 	return map[string]any{"events": events, "cli": cli, "chat": chat, "config": cfg,
-		"links": map[string][]string{"provides": {}, "uses": {}}}
+		"links": map[string][]string{"provides": append([]string{}, provides...), "uses": append([]string{}, uses...)}}
 }
 
 // call runs plugin code with the triggering event in context. Errors and panics are

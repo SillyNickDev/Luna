@@ -155,7 +155,7 @@ func (b *Bot) runLive() error {
 		case "ping":
 			ctl.Write("pong", f.ID, nil)
 		case "call":
-			ctl.Write("result", f.ID, capsule.Result{Error: "no such link"})
+			go func() { ctl.Write("result", f.ID, b.serveCall(f)) }()
 		}
 	}
 	smu.Lock()

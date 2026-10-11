@@ -1,17 +1,11 @@
 package bundle
 
 import (
-	"encoding/json"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/BurntSushi/toml"
-
-	"luna/internal/capsule"
-	"luna/internal/plugin"
 	luna "luna/sdk/go"
 	"luna/sdk/go/lunatest"
 )
@@ -31,73 +25,7 @@ func said(t *testing.T, got []string, want ...string) {
 	}
 }
 
-// The code's command declarations are what the harness routes by; plugin.toml is what Luna
-// routes by. They must agree.
-func TestManifestMatchesCode(t *testing.T) {
-	if _, err := capsule.LoadManifest("."); err != nil {
-		t.Fatal(err)
-	}
-	m, err := plugin.Load(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := New().Describe()
-	var code []map[string]any
-	b, _ := json.Marshal(d["chat"])
-	json.Unmarshal(b, &code)
-	if len(code) != len(m.Chat.Commands) {
-		t.Fatalf("code has %d chat commands, plugin.toml %d", len(code), len(m.Chat.Commands))
-	}
-	for _, c := range code {
-		i := slices.IndexFunc(m.Chat.Commands, func(mc plugin.ChatCommand) bool { return mc.Name == c["name"] })
-		if i < 0 {
-			t.Fatalf("!%s isn't in plugin.toml", c["name"])
-		}
-		mc := m.Chat.Commands[i]
-		capab, _ := c["capability"].(string)
-		cd, _ := c["cooldown"].(string)
-		ucd, _ := c["user_cooldown"].(string)
-		var aliases []string
-		for _, a := range c["aliases"].([]any) {
-			aliases = append(aliases, a.(string))
-		}
-		pd := func(s string) time.Duration { d, _ := time.ParseDuration(s); return d }
-		if capab != mc.Capability || pd(cd) != time.Duration(mc.Cooldown.Global) || pd(ucd) != time.Duration(mc.Cooldown.User) ||
-			!slices.Equal(aliases, mc.Aliases) {
-			t.Errorf("!%s: code %v, plugin.toml %+v", c["name"], c, mc)
-		}
-	}
-	var cli []plugin.CLICommand
-	b, _ = json.Marshal(d["cli"])
-	json.Unmarshal(b, &cli)
-	slices.SortFunc(m.CLI.Commands, func(a, b plugin.CLICommand) int { return strings.Compare(a.Name, b.Name) })
-	if !reflect.DeepEqual(cli, m.CLI.Commands) {
-		t.Errorf("CLI commands differ:\ncode %+v\ntoml %+v", cli, m.CLI.Commands)
-	}
-	var raw struct {
-		Config map[string]map[string]any `toml:"config"`
-	}
-	toml.Decode(string(Manifest), &raw)
-	cfg := d["config"].(map[string]map[string]any)
-	for k, f := range raw.Config {
-		if cfg[k] == nil || cfg[k]["type"] != f["type"] {
-			t.Errorf("config %s: plugin.toml %v, Settings %v", k, f, cfg[k])
-		}
-	}
-	if len(cfg) != len(raw.Config) {
-		t.Errorf("Settings has %d fields, plugin.toml [config] %d", len(cfg), len(raw.Config))
-	}
-	var events []string
-	for _, e := range d["events"].([]string) {
-		if !m.AllowsEvents(e) {
-			t.Errorf("handles %s without [permissions].events", e)
-		}
-		events = append(events, e)
-	}
-	if len(events) != len(m.Permissions.Events) {
-		t.Errorf("asks for events it doesn't handle: %v vs %v", m.Permissions.Events, events)
-	}
-}
+func TestManifestMatchesCode(t *testing.T) { lunatest.CheckManifest(t, New(), ".") }
 
 func TestCustomCommands(t *testing.T) {
 	h := start(t, nil)

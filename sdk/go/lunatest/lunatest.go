@@ -50,8 +50,10 @@ type Harness struct {
 	msgs      []guard.Msg
 	seen      int // messages already returned by Said
 	cooldowns map[string]time.Time
-	stream    int64
+	stream    int64 // the current stream's number, 0 while offline
+	streams   int64
 	n         int
+	links     map[string]func(luna.Args) (any, error)
 }
 
 // Clock is fake time, starting at 2026-01-01 12:00 UTC.
@@ -206,6 +208,16 @@ func New(tb testing.TB, bot *luna.Bot, dir string, cfg map[string]any) *Harness 
 	}
 	tb.Cleanup(func() { conn.Close() })
 	bot.CrashOnError = true
+	h.links = map[string]func(luna.Args) (any, error){}
+	bot.TestLinks(func(use string, args luna.Args) (any, error) {
+		h.mu.Lock()
+		fn := h.links[use]
+		h.mu.Unlock()
+		if fn == nil {
+			return nil, fmt.Errorf("%w: %s (fake it with h.Link)", luna.ErrLinkUnavailable, use)
+		}
+		return fn(args)
+	})
 	if err := bot.TestConnect(pb.NewHostClient(conn), h.Clock.Now, m.ID, effective); err != nil {
 		tb.Fatal(err)
 	}
@@ -246,7 +258,8 @@ func (h *Harness) Emit(typ string, data map[string]any) *luna.Event {
 	}
 	switch typ {
 	case "twitch.stream.online":
-		h.stream++
+		h.streams++ // numbered like the daemon's, so streaks carry across streams
+		h.stream = h.streams
 		h.Twitch.mu.Lock()
 		h.Twitch.Live = luna.Stream{Live: true, StartedAt: h.Clock.Now()}
 		h.Twitch.mu.Unlock()
@@ -334,6 +347,26 @@ func (h *Harness) CLI(name string, args luna.Args) (any, error) {
 	}
 	if s, ok := out.(string); ok {
 		return s, nil
+	}
+	b, _ := json.Marshal(out)
+	var v any
+	json.Unmarshal(b, &v)
+	return v, nil
+}
+
+// Link fakes a provider: h.Link("luna.points:spend", func(a luna.Args) (any, error) {...}).
+// A nil fn takes it down again, so calls fail with ErrLinkUnavailable.
+func (h *Harness) Link(use string, fn func(luna.Args) (any, error)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.links[use] = fn
+}
+
+// Provide calls the plugin's own provider for link, as the plugin caller would.
+func (h *Harness) Provide(link, caller string, args luna.Args) (any, error) {
+	out, err := h.bot.TestProvide(link, caller, args)
+	if err != nil || out == nil {
+		return out, err
 	}
 	b, _ := json.Marshal(out)
 	var v any
