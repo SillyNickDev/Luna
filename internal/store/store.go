@@ -49,11 +49,24 @@ CREATE TABLE IF NOT EXISTS plugin_store (
 	value   BLOB NOT NULL,
 	expires INTEGER NOT NULL, -- unix ms, 0 = never
 	PRIMARY KEY (plugin, key)
-);`
+);
+CREATE TABLE IF NOT EXISTS viewers (
+	user_id     TEXT PRIMARY KEY,
+	login       TEXT NOT NULL,
+	first_seen  INTEGER NOT NULL, -- unix ms
+	last_seen   INTEGER NOT NULL,
+	messages    INTEGER NOT NULL,
+	watch_ms    INTEGER NOT NULL, -- time chatting while live
+	streams     INTEGER NOT NULL, -- streams they chatted in
+	streak      INTEGER NOT NULL, -- consecutive streams
+	last_stream INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS viewers_login ON viewers(login);`
 
 type Store struct {
 	db     *sql.DB
 	insert *sql.Stmt
+	Now    func() time.Time // plugin store TTLs; a test harness swaps in its fake clock
 }
 
 func Open(path string) (*Store, error) {
@@ -71,7 +84,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db, insert: insert}, nil
+	return &Store{db: db, insert: insert, Now: time.Now}, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -268,11 +281,13 @@ var ErrStoreFull = errors.New(errKeyPrefix + "this plugin already has the maximu
 
 func live(now time.Time) int64 { return now.UnixMilli() }
 
+func (s *Store) live() int64 { return s.Now().UnixMilli() }
+
 // PluginGet returns a plugin's JSON value, or nil if missing or expired.
 func (s *Store) PluginGet(plugin, key string) ([]byte, error) {
 	var v []byte
 	err := s.db.QueryRow(`SELECT value FROM plugin_store WHERE plugin = ? AND key = ? AND (expires = 0 OR expires > ?)`,
-		plugin, key, live(time.Now())).Scan(&v)
+		plugin, key, s.live()).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -284,21 +299,44 @@ func (s *Store) PluginSet(plugin, key string, value []byte, ttl time.Duration) e
 	if err := checkKV(key, value); err != nil {
 		return err
 	}
-	var exp int64
-	if ttl > 0 {
-		exp = time.Now().Add(ttl).UnixMilli()
+	return s.PluginBatch(plugin, []KV{{key, value, ttl}}, nil)
+}
+
+type KV struct {
+	Key   string
+	Value []byte
+	TTL   time.Duration
+}
+
+// PluginBatch applies sets then deletes in one transaction: all of them or none.
+func (s *Store) PluginBatch(plugin string, sets []KV, deletes []string) error {
+	for _, kv := range sets {
+		if err := checkKV(kv.Key, kv.Value); err != nil {
+			return err
+		}
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if err := roomFor(tx, plugin, key); err != nil {
-		return err
+	for _, kv := range sets {
+		var exp int64
+		if kv.TTL > 0 {
+			exp = s.Now().Add(kv.TTL).UnixMilli()
+		}
+		if err := s.roomFor(tx, plugin, kv.Key); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO plugin_store (plugin, key, value, expires) VALUES (?, ?, ?, ?)
+			ON CONFLICT(plugin, key) DO UPDATE SET value = excluded.value, expires = excluded.expires`, plugin, kv.Key, kv.Value, exp); err != nil {
+			return err
+		}
 	}
-	if _, err := tx.Exec(`INSERT INTO plugin_store (plugin, key, value, expires) VALUES (?, ?, ?, ?)
-		ON CONFLICT(plugin, key) DO UPDATE SET value = excluded.value, expires = excluded.expires`, plugin, key, value, exp); err != nil {
-		return err
+	for _, k := range deletes {
+		if _, err := tx.Exec(`DELETE FROM plugin_store WHERE plugin = ? AND key = ?`, plugin, k); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -318,8 +356,8 @@ func (s *Store) PluginIncr(plugin, key string, by int64) (int64, error) {
 	err = tx.QueryRow(`SELECT value, expires FROM plugin_store WHERE plugin = ? AND key = ?`, plugin, key).Scan(&cur, &exp)
 	var n int64
 	switch {
-	case errors.Is(err, sql.ErrNoRows) || exp != 0 && exp <= live(time.Now()):
-		if err := roomFor(tx, plugin, key); err != nil {
+	case errors.Is(err, sql.ErrNoRows) || exp != 0 && exp <= s.live():
+		if err := s.roomFor(tx, plugin, key); err != nil {
 			return 0, err
 		}
 		exp = 0
@@ -346,7 +384,7 @@ func (s *Store) PluginDelete(plugin, key string) error {
 // PluginKeys lists live keys starting with prefix, sorted.
 func (s *Store) PluginKeys(plugin, prefix string) ([]string, error) {
 	rows, err := s.db.Query(`SELECT key FROM plugin_store WHERE plugin = ? AND substr(key, 1, ?) = ? AND (expires = 0 OR expires > ?) ORDER BY key`,
-		plugin, len(prefix), prefix, live(time.Now()))
+		plugin, len(prefix), prefix, s.live())
 	if err != nil {
 		return nil, err
 	}
@@ -379,13 +417,13 @@ func checkKV(key string, value []byte) error {
 }
 
 // roomFor refuses a new key once the plugin is at MaxKeys, dropping expired rows first.
-func roomFor(tx *sql.Tx, plugin, key string) error {
+func (s *Store) roomFor(tx *sql.Tx, plugin, key string) error {
 	var exists bool
 	tx.QueryRow(`SELECT 1 FROM plugin_store WHERE plugin = ? AND key = ?`, plugin, key).Scan(&exists)
 	if exists {
 		return nil
 	}
-	if _, err := tx.Exec(`DELETE FROM plugin_store WHERE plugin = ? AND expires != 0 AND expires <= ?`, plugin, live(time.Now())); err != nil {
+	if _, err := tx.Exec(`DELETE FROM plugin_store WHERE plugin = ? AND expires != 0 AND expires <= ?`, plugin, s.live()); err != nil {
 		return err
 	}
 	var n int
@@ -396,4 +434,77 @@ func roomFor(tx *sql.Tx, plugin, key string) error {
 		return ErrStoreFull
 	}
 	return nil
+}
+
+// Viewer is Luna's shared profile of one chatter.
+type Viewer struct {
+	ID        string    `json:"id"`
+	Login     string    `json:"login"`
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
+	Messages  int64     `json:"messages"`
+	WatchS    int64     `json:"watch_s"`
+	Streams   int64     `json:"streams"`
+	Streak    int64     `json:"streak"`
+}
+
+const viewerCols = `user_id, login, first_seen, last_seen, messages, watch_ms, streams, streak, last_stream`
+
+func scanViewer(row interface{ Scan(...any) error }) (*Viewer, int64, error) {
+	var v Viewer
+	var first, last, watch, lastStream int64
+	err := row.Scan(&v.ID, &v.Login, &first, &last, &v.Messages, &watch, &v.Streams, &v.Streak, &lastStream)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, nil
+	}
+	v.FirstSeen, v.LastSeen, v.WatchS = time.UnixMilli(first).UTC(), time.UnixMilli(last).UTC(), watch/1000
+	return &v, lastStream, err
+}
+
+// activeGap is how long after a message a chatter still counts as watching.
+const activeGap = 10 * time.Minute
+
+// SeeChatter records a chat message from id and returns their profile from before it
+// (nil the first time Luna sees them). stream numbers the current live stream, 0 offline:
+// watch time and streaks only count while live.
+func (s *Store) SeeChatter(id, login string, now time.Time, stream int64) (*Viewer, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	prev, lastStream, err := scanViewer(tx.QueryRow(`SELECT `+viewerCols+` FROM viewers WHERE user_id = ?`, id))
+	if err != nil {
+		return nil, err
+	}
+	v := Viewer{ID: id, Login: login, FirstSeen: now, LastSeen: now, Messages: 1}
+	var watch int64
+	if prev != nil {
+		v, watch = *prev, prev.WatchS*1000
+		v.Login, v.LastSeen = login, now
+		v.Messages++
+		if gap := now.Sub(prev.LastSeen); stream > 0 && lastStream == stream && gap < activeGap {
+			watch += gap.Milliseconds()
+		}
+	}
+	if stream > 0 && lastStream != stream {
+		v.Streams++
+		if prev != nil && lastStream == stream-1 {
+			v.Streak++
+		} else {
+			v.Streak = 1
+		}
+		lastStream = stream
+	}
+	if _, err := tx.Exec(`INSERT OR REPLACE INTO viewers (`+viewerCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		v.ID, v.Login, v.FirstSeen.UnixMilli(), v.LastSeen.UnixMilli(), v.Messages, watch, v.Streams, v.Streak, lastStream); err != nil {
+		return nil, err
+	}
+	return prev, tx.Commit()
+}
+
+// GetViewer finds a profile by Twitch user id or login; nil if never seen.
+func (s *Store) GetViewer(user string) (*Viewer, error) {
+	v, _, err := scanViewer(s.db.QueryRow(`SELECT `+viewerCols+` FROM viewers WHERE user_id = ? OR login = ? ORDER BY last_seen DESC LIMIT 1`, user, strings.ToLower(user)))
+	return v, err
 }

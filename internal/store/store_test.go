@@ -89,3 +89,35 @@ func TestPluginStore(t *testing.T) {
 		t.Fatal("oversized value accepted")
 	}
 }
+
+func TestViewers(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "v.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	t0 := time.Unix(1_800_000_000, 0)
+	if prev, err := s.SeeChatter("1", "fox", t0, 1); prev != nil || err != nil {
+		t.Fatalf("first sight: %v %v", prev, err)
+	}
+	s.SeeChatter("1", "fox", t0.Add(5*time.Minute), 1)  // counts: 5 min watched
+	s.SeeChatter("1", "fox", t0.Add(30*time.Minute), 1) // gap over 10 min: not counted
+	s.SeeChatter("1", "fox", t0.Add(48*time.Hour), 2)   // next stream: streak 2
+	s.SeeChatter("1", "fox", t0.Add(96*time.Hour), 4)   // missed stream 3: streak resets
+	v, _ := s.GetViewer("FOX")
+	if v == nil || v.Messages != 5 || v.WatchS != 300 || v.Streams != 3 || v.Streak != 1 || !v.FirstSeen.Equal(t0) {
+		t.Fatalf("got %+v", v)
+	}
+	if err := s.PluginBatch("p", []KV{{"a", []byte("1"), 0}, {"b", []byte("2"), 0}}, []string{"a"}); err != nil {
+		t.Fatal(err)
+	}
+	if keys, _ := s.PluginKeys("p", ""); len(keys) != 1 || keys[0] != "b" {
+		t.Fatalf("batch: %v", keys)
+	}
+	if err := s.PluginBatch("p", []KV{{"c", []byte("3"), 0}, {"", nil, 0}}, nil); err == nil {
+		t.Fatal("a bad key in a batch was accepted")
+	}
+	if v, _ := s.PluginGet("p", "c"); v != nil {
+		t.Fatal("a failed batch wrote part of itself")
+	}
+}

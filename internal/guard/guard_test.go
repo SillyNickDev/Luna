@@ -19,7 +19,7 @@ func TestGuard(t *testing.T) {
 	}
 	g := New(func() *config.Config { return c })
 	var sent []string
-	g.Live = func(_ context.Context, s string) error { sent = append(sent, s); return nil }
+	g.Live = func(_ context.Context, m Msg) error { sent = append(sent, m.Text); return nil }
 	ctx := context.Background()
 
 	if err := g.Chat(ctx, "BAD  WORD here", false); !errors.Is(err, ErrBlocked) {

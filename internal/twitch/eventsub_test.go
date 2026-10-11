@@ -30,8 +30,13 @@ func TestToEvent(t *testing.T) {
 		t.Fatalf("cheer: %v %s", err, ev.Data)
 	}
 	sub := `{"user_id":"7","user_login":"s","tier":"2000","is_gift":false}`
-	if ev, _ := toEvent("channel.subscribe", json.RawMessage(sub)); string(ev.Data) != `{"gift":false,"tier":2,"user":{"id":"7","login":"s","roles":[]}}` {
+	if ev, _ := toEvent("channel.subscribe", json.RawMessage(sub)); string(ev.Data) != `{"gift":false,"tier":2,"user":{"id":"7","login":"s","name":"","roles":[]}}` {
 		t.Fatalf("sub: %s", ev.Data)
+	}
+	gift := `{"user_id":"7","user_login":"s","user_name":"S","tier":"1000","total":50,"is_anonymous":false}`
+	if ev, _ := toEvent("channel.subscription.gift", json.RawMessage(gift)); ev.Type != "twitch.channel.gift" ||
+		string(ev.Data) != `{"anonymous":false,"count":50,"tier":1,"user":{"id":"7","login":"s","name":"S","roles":[]}}` {
+		t.Fatalf("gift: %s", ev.Data)
 	}
 	if _, err := toEvent("channel.unknown", json.RawMessage(`{}`)); err == nil {
 		t.Fatal("unknown type accepted")

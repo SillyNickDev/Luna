@@ -27,9 +27,12 @@ type Manifest struct {
 	Version     string `toml:"version"`
 	API         string `toml:"api"`
 	Permissions struct {
-		Events []string `toml:"events"`
-		Chat   []string `toml:"chat"`
-		Store  bool     `toml:"store"`
+		Events  []string `toml:"events"`
+		Chat    []string `toml:"chat"`
+		Store   bool     `toml:"store"`
+		Mod     []string `toml:"mod"`
+		Twitch  []string `toml:"twitch"`
+		Viewers bool     `toml:"viewers"`
 	} `toml:"permissions"`
 	CLI struct {
 		Name     string       `toml:"name"`
@@ -130,9 +133,18 @@ func (m *Manifest) validate() error {
 			bad("[permissions].events: %q must be an event type like twitch.follow or a family like twitch.*", p)
 		}
 	}
-	for _, c := range m.Permissions.Chat {
-		if c != "send" {
-			bad(`[permissions].chat: %q isn't supported (only "send")`, c)
+	for _, group := range []struct {
+		name      string
+		have, all []string
+	}{
+		{"chat", m.Permissions.Chat, chatPerms},
+		{"mod", m.Permissions.Mod, modPerms},
+		{"twitch", m.Permissions.Twitch, []string{"read"}},
+	} {
+		for _, c := range group.have {
+			if !slices.Contains(group.all, c) {
+				bad("[permissions].%s: %q isn't supported (one of %s)", group.name, c, strings.Join(group.all, ", "))
+			}
 		}
 	}
 	if m.CLI.Name != "" && (!nameRe.MatchString(m.CLI.Name) || slices.Contains(reserved, m.CLI.Name)) {
@@ -234,6 +246,15 @@ func (m *Manifest) EffectiveConfig(overrides map[string]any) ([]byte, error) {
 	return json.Marshal(out)
 }
 
+var (
+	chatPerms = []string{"send", "announce", "whisper"}
+	modPerms  = []string{"timeout", "ban", "delete", "warn", "shield", "shoutout"}
+	// modWords say what each [permissions].mod entry lets the plugin do, for approval.
+	modWords = map[string]string{"timeout": "time viewers out", "ban": "ban and unban viewers",
+		"delete": "delete chat messages", "warn": "send Twitch warnings", "shield": "turn Shield Mode on and off",
+		"shoutout": "send Twitch shoutouts"}
+)
+
 // AllowsEvents reports whether pattern is within [permissions].events.
 func (m *Manifest) AllowsEvents(pattern string) bool {
 	for _, p := range m.Permissions.Events {
@@ -252,6 +273,21 @@ func (m *Manifest) Describe() string {
 	}
 	if slices.Contains(m.Permissions.Chat, "send") {
 		b.WriteString("  sends chat messages\n")
+	}
+	if slices.Contains(m.Permissions.Chat, "announce") {
+		b.WriteString("  posts chat announcements\n")
+	}
+	if slices.Contains(m.Permissions.Chat, "whisper") {
+		b.WriteString("  whispers viewers\n")
+	}
+	for _, p := range m.Permissions.Mod {
+		fmt.Fprintf(&b, "  moderates: can %s\n", modWords[p])
+	}
+	if len(m.Permissions.Twitch) > 0 {
+		b.WriteString("  reads public Twitch info: users, your channel and stream, who follows\n")
+	}
+	if m.Permissions.Viewers {
+		b.WriteString("  reads viewer profiles: first and last seen, messages, watch time, streaks\n")
 	}
 	if m.Permissions.Store {
 		b.WriteString("  keeps its own saved data in Luna's database\n")

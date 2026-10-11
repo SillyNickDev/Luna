@@ -28,6 +28,10 @@ var Scopes = map[string][]string{
 		"user:read:chat", "user:write:chat", "moderator:read:followers",
 		"channel:read:subscriptions", "bits:read", "channel:read:redemptions", "channel:bot",
 		"moderation:read",
+		// the core bundle's moderation, shoutouts, announcements and whispers
+		"moderator:manage:banned_users", "moderator:manage:chat_messages", "moderator:manage:warnings",
+		"moderator:manage:shield_mode", "moderator:manage:shoutouts", "moderator:manage:announcements",
+		"user:manage:whispers",
 	},
 	"bot": {"user:read:chat", "user:write:chat", "user:bot"},
 }

@@ -449,8 +449,10 @@ func (x *CommandResult) GetError() string {
 type ChatSendRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
-	Simulated     bool                   `protobuf:"varint,2,opt,name=simulated,proto3" json:"simulated,omitempty"`           // replying to a simulated event: goes to the terminal, not Twitch
-	ReplyTo       string                 `protobuf:"bytes,3,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"` // event id of the message being answered, if any
+	Simulated     bool                   `protobuf:"varint,2,opt,name=simulated,proto3" json:"simulated,omitempty"`                // replying to a simulated event: goes to the terminal, not Twitch
+	ReplyTo       string                 `protobuf:"bytes,3,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`      // message_id of the chat message being answered, if any
+	Mode          string                 `protobuf:"bytes,4,opt,name=mode,proto3" json:"mode,omitempty"`                           // "" (a chat message), "announce" or "whisper"; each needs its name in [permissions].chat
+	ToUserId      string                 `protobuf:"bytes,5,opt,name=to_user_id,json=toUserId,proto3" json:"to_user_id,omitempty"` // whisper: who receives it
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -506,6 +508,348 @@ func (x *ChatSendRequest) GetReplyTo() string {
 	return ""
 }
 
+func (x *ChatSendRequest) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *ChatSendRequest) GetToUserId() string {
+	if x != nil {
+		return x.ToUserId
+	}
+	return ""
+}
+
+type ModRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Action        string                 `protobuf:"bytes,1,opt,name=action,proto3" json:"action,omitempty"`               // timeout, ban, unban, delete, warn, shield, shoutout
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // the viewer acted on (shoutout: the channel)
+	Seconds       int64                  `protobuf:"varint,3,opt,name=seconds,proto3" json:"seconds,omitempty"`            // timeout length
+	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	MessageId     string                 `protobuf:"bytes,5,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"` // delete
+	On            bool                   `protobuf:"varint,6,opt,name=on,proto3" json:"on,omitempty"`                               // shield
+	Simulated     bool                   `protobuf:"varint,7,opt,name=simulated,proto3" json:"simulated,omitempty"`                 // acting on a simulated event: printed, never sent
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ModRequest) Reset() {
+	*x = ModRequest{}
+	mi := &file_plugin_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ModRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ModRequest) ProtoMessage() {}
+
+func (x *ModRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ModRequest.ProtoReflect.Descriptor instead.
+func (*ModRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ModRequest) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *ModRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *ModRequest) GetSeconds() int64 {
+	if x != nil {
+		return x.Seconds
+	}
+	return 0
+}
+
+func (x *ModRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *ModRequest) GetMessageId() string {
+	if x != nil {
+		return x.MessageId
+	}
+	return ""
+}
+
+func (x *ModRequest) GetOn() bool {
+	if x != nil {
+		return x.On
+	}
+	return false
+}
+
+func (x *ModRequest) GetSimulated() bool {
+	if x != nil {
+		return x.Simulated
+	}
+	return false
+}
+
+type TwitchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Call          string                 `protobuf:"bytes,1,opt,name=call,proto3" json:"call,omitempty"` // user (by login or id), channel, stream (empty user = this channel), follow (user id)
+	User          string                 `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TwitchRequest) Reset() {
+	*x = TwitchRequest{}
+	mi := &file_plugin_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TwitchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TwitchRequest) ProtoMessage() {}
+
+func (x *TwitchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TwitchRequest.ProtoReflect.Descriptor instead.
+func (*TwitchRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *TwitchRequest) GetCall() string {
+	if x != nil {
+		return x.Call
+	}
+	return ""
+}
+
+func (x *TwitchRequest) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
+}
+
+type TwitchReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DataJson      []byte                 `protobuf:"bytes,1,opt,name=data_json,json=dataJson,proto3" json:"data_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TwitchReply) Reset() {
+	*x = TwitchReply{}
+	mi := &file_plugin_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TwitchReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TwitchReply) ProtoMessage() {}
+
+func (x *TwitchReply) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TwitchReply.ProtoReflect.Descriptor instead.
+func (*TwitchReply) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *TwitchReply) GetDataJson() []byte {
+	if x != nil {
+		return x.DataJson
+	}
+	return nil
+}
+
+type ViewerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"` // Twitch user id, or login
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ViewerRequest) Reset() {
+	*x = ViewerRequest{}
+	mi := &file_plugin_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ViewerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ViewerRequest) ProtoMessage() {}
+
+func (x *ViewerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ViewerRequest.ProtoReflect.Descriptor instead.
+func (*ViewerRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ViewerRequest) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
+}
+
+type ViewerReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DataJson      []byte                 `protobuf:"bytes,1,opt,name=data_json,json=dataJson,proto3" json:"data_json,omitempty"` // null when Luna hasn't seen them
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ViewerReply) Reset() {
+	*x = ViewerReply{}
+	mi := &file_plugin_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ViewerReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ViewerReply) ProtoMessage() {}
+
+func (x *ViewerReply) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ViewerReply.ProtoReflect.Descriptor instead.
+func (*ViewerReply) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ViewerReply) GetDataJson() []byte {
+	if x != nil {
+		return x.DataJson
+	}
+	return nil
+}
+
+type StoreBatchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Set           []*StoreSetRequest     `protobuf:"bytes,1,rep,name=set,proto3" json:"set,omitempty"`
+	Delete        []string               `protobuf:"bytes,2,rep,name=delete,proto3" json:"delete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StoreBatchRequest) Reset() {
+	*x = StoreBatchRequest{}
+	mi := &file_plugin_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StoreBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StoreBatchRequest) ProtoMessage() {}
+
+func (x *StoreBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StoreBatchRequest.ProtoReflect.Descriptor instead.
+func (*StoreBatchRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *StoreBatchRequest) GetSet() []*StoreSetRequest {
+	if x != nil {
+		return x.Set
+	}
+	return nil
+}
+
+func (x *StoreBatchRequest) GetDelete() []string {
+	if x != nil {
+		return x.Delete
+	}
+	return nil
+}
+
 type StoreKey struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -515,7 +859,7 @@ type StoreKey struct {
 
 func (x *StoreKey) Reset() {
 	*x = StoreKey{}
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -527,7 +871,7 @@ func (x *StoreKey) String() string {
 func (*StoreKey) ProtoMessage() {}
 
 func (x *StoreKey) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -540,7 +884,7 @@ func (x *StoreKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreKey.ProtoReflect.Descriptor instead.
 func (*StoreKey) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{8}
+	return file_plugin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *StoreKey) GetKey() string {
@@ -560,7 +904,7 @@ type StoreValue struct {
 
 func (x *StoreValue) Reset() {
 	*x = StoreValue{}
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -572,7 +916,7 @@ func (x *StoreValue) String() string {
 func (*StoreValue) ProtoMessage() {}
 
 func (x *StoreValue) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -585,7 +929,7 @@ func (x *StoreValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreValue.ProtoReflect.Descriptor instead.
 func (*StoreValue) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{9}
+	return file_plugin_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *StoreValue) GetFound() bool {
@@ -613,7 +957,7 @@ type StoreSetRequest struct {
 
 func (x *StoreSetRequest) Reset() {
 	*x = StoreSetRequest{}
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -625,7 +969,7 @@ func (x *StoreSetRequest) String() string {
 func (*StoreSetRequest) ProtoMessage() {}
 
 func (x *StoreSetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -638,7 +982,7 @@ func (x *StoreSetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreSetRequest.ProtoReflect.Descriptor instead.
 func (*StoreSetRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{10}
+	return file_plugin_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *StoreSetRequest) GetKey() string {
@@ -672,7 +1016,7 @@ type StoreIncrRequest struct {
 
 func (x *StoreIncrRequest) Reset() {
 	*x = StoreIncrRequest{}
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -684,7 +1028,7 @@ func (x *StoreIncrRequest) String() string {
 func (*StoreIncrRequest) ProtoMessage() {}
 
 func (x *StoreIncrRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -697,7 +1041,7 @@ func (x *StoreIncrRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreIncrRequest.ProtoReflect.Descriptor instead.
 func (*StoreIncrRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{11}
+	return file_plugin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *StoreIncrRequest) GetKey() string {
@@ -723,7 +1067,7 @@ type StoreIncrReply struct {
 
 func (x *StoreIncrReply) Reset() {
 	*x = StoreIncrReply{}
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -735,7 +1079,7 @@ func (x *StoreIncrReply) String() string {
 func (*StoreIncrReply) ProtoMessage() {}
 
 func (x *StoreIncrReply) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -748,7 +1092,7 @@ func (x *StoreIncrReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreIncrReply.ProtoReflect.Descriptor instead.
 func (*StoreIncrReply) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{12}
+	return file_plugin_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *StoreIncrReply) GetValue() int64 {
@@ -767,7 +1111,7 @@ type StoreKeysRequest struct {
 
 func (x *StoreKeysRequest) Reset() {
 	*x = StoreKeysRequest{}
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -779,7 +1123,7 @@ func (x *StoreKeysRequest) String() string {
 func (*StoreKeysRequest) ProtoMessage() {}
 
 func (x *StoreKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -792,7 +1136,7 @@ func (x *StoreKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreKeysRequest.ProtoReflect.Descriptor instead.
 func (*StoreKeysRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{13}
+	return file_plugin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *StoreKeysRequest) GetPrefix() string {
@@ -811,7 +1155,7 @@ type StoreKeysReply struct {
 
 func (x *StoreKeysReply) Reset() {
 	*x = StoreKeysReply{}
-	mi := &file_plugin_proto_msgTypes[14]
+	mi := &file_plugin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -823,7 +1167,7 @@ func (x *StoreKeysReply) String() string {
 func (*StoreKeysReply) ProtoMessage() {}
 
 func (x *StoreKeysReply) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[14]
+	mi := &file_plugin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -836,7 +1180,7 @@ func (x *StoreKeysReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreKeysReply.ProtoReflect.Descriptor instead.
 func (*StoreKeysReply) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{14}
+	return file_plugin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *StoreKeysReply) GetKeys() []string {
@@ -856,7 +1200,7 @@ type LogRequest struct {
 
 func (x *LogRequest) Reset() {
 	*x = LogRequest{}
-	mi := &file_plugin_proto_msgTypes[15]
+	mi := &file_plugin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -868,7 +1212,7 @@ func (x *LogRequest) String() string {
 func (*LogRequest) ProtoMessage() {}
 
 func (x *LogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[15]
+	mi := &file_plugin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -881,7 +1225,7 @@ func (x *LogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogRequest.ProtoReflect.Descriptor instead.
 func (*LogRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{15}
+	return file_plugin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *LogRequest) GetLevel() string {
@@ -908,7 +1252,7 @@ type EmitRequest struct {
 
 func (x *EmitRequest) Reset() {
 	*x = EmitRequest{}
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -920,7 +1264,7 @@ func (x *EmitRequest) String() string {
 func (*EmitRequest) ProtoMessage() {}
 
 func (x *EmitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -933,7 +1277,7 @@ func (x *EmitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmitRequest.ProtoReflect.Descriptor instead.
 func (*EmitRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{16}
+	return file_plugin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EmitRequest) GetName() string {
@@ -984,11 +1328,36 @@ const file_plugin_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tdata_json\x18\x02 \x01(\fR\bdataJson\x12\x12\n" +
 	"\x04text\x18\x03 \x01(\tR\x04text\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error\"^\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"\x90\x01\n" +
 	"\x0fChatSendRequest\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1c\n" +
 	"\tsimulated\x18\x02 \x01(\bR\tsimulated\x12\x19\n" +
-	"\breply_to\x18\x03 \x01(\tR\areplyTo\"\x1c\n" +
+	"\breply_to\x18\x03 \x01(\tR\areplyTo\x12\x12\n" +
+	"\x04mode\x18\x04 \x01(\tR\x04mode\x12\x1c\n" +
+	"\n" +
+	"to_user_id\x18\x05 \x01(\tR\btoUserId\"\xbc\x01\n" +
+	"\n" +
+	"ModRequest\x12\x16\n" +
+	"\x06action\x18\x01 \x01(\tR\x06action\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x18\n" +
+	"\aseconds\x18\x03 \x01(\x03R\aseconds\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x1d\n" +
+	"\n" +
+	"message_id\x18\x05 \x01(\tR\tmessageId\x12\x0e\n" +
+	"\x02on\x18\x06 \x01(\bR\x02on\x12\x1c\n" +
+	"\tsimulated\x18\a \x01(\bR\tsimulated\"7\n" +
+	"\rTwitchRequest\x12\x12\n" +
+	"\x04call\x18\x01 \x01(\tR\x04call\x12\x12\n" +
+	"\x04user\x18\x02 \x01(\tR\x04user\"*\n" +
+	"\vTwitchReply\x12\x1b\n" +
+	"\tdata_json\x18\x01 \x01(\fR\bdataJson\"#\n" +
+	"\rViewerRequest\x12\x12\n" +
+	"\x04user\x18\x01 \x01(\tR\x04user\"*\n" +
+	"\vViewerReply\x12\x1b\n" +
+	"\tdata_json\x18\x01 \x01(\fR\bdataJson\"^\n" +
+	"\x11StoreBatchRequest\x121\n" +
+	"\x03set\x18\x01 \x03(\v2\x1f.luna.plugin.v1.StoreSetRequestR\x03set\x12\x16\n" +
+	"\x06delete\x18\x02 \x03(\tR\x06delete\"\x1c\n" +
 	"\bStoreKey\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"A\n" +
 	"\n" +
@@ -1016,17 +1385,22 @@ const file_plugin_proto_rawDesc = "" +
 	"\x03msg\x18\x02 \x01(\tR\x03msg\">\n" +
 	"\vEmitRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
-	"\tdata_json\x18\x02 \x01(\fR\bdataJson2\xf7\x05\n" +
+	"\tdata_json\x18\x02 \x01(\fR\bdataJson2\x85\b\n" +
 	"\x04Host\x12A\n" +
 	"\x05Hello\x12\x1c.luna.plugin.v1.HelloRequest\x1a\x1a.luna.plugin.v1.HelloReply\x12F\n" +
 	"\tSubscribe\x12 .luna.plugin.v1.SubscribeRequest\x1a\x15.luna.plugin.v1.Event0\x01\x12F\n" +
 	"\bCommands\x12\x1d.luna.plugin.v1.CommandResult\x1a\x17.luna.plugin.v1.Command(\x010\x01\x12B\n" +
-	"\bChatSend\x12\x1f.luna.plugin.v1.ChatSendRequest\x1a\x15.luna.plugin.v1.Empty\x12@\n" +
+	"\bChatSend\x12\x1f.luna.plugin.v1.ChatSendRequest\x1a\x15.luna.plugin.v1.Empty\x128\n" +
+	"\x03Mod\x12\x1a.luna.plugin.v1.ModRequest\x1a\x15.luna.plugin.v1.Empty\x12D\n" +
+	"\x06Twitch\x12\x1d.luna.plugin.v1.TwitchRequest\x1a\x1b.luna.plugin.v1.TwitchReply\x12D\n" +
+	"\x06Viewer\x12\x1d.luna.plugin.v1.ViewerRequest\x1a\x1b.luna.plugin.v1.ViewerReply\x12@\n" +
 	"\bStoreGet\x12\x18.luna.plugin.v1.StoreKey\x1a\x1a.luna.plugin.v1.StoreValue\x12B\n" +
 	"\bStoreSet\x12\x1f.luna.plugin.v1.StoreSetRequest\x1a\x15.luna.plugin.v1.Empty\x12>\n" +
 	"\vStoreDelete\x12\x18.luna.plugin.v1.StoreKey\x1a\x15.luna.plugin.v1.Empty\x12M\n" +
 	"\tStoreIncr\x12 .luna.plugin.v1.StoreIncrRequest\x1a\x1e.luna.plugin.v1.StoreIncrReply\x12M\n" +
-	"\tStoreKeys\x12 .luna.plugin.v1.StoreKeysRequest\x1a\x1e.luna.plugin.v1.StoreKeysReply\x128\n" +
+	"\tStoreKeys\x12 .luna.plugin.v1.StoreKeysRequest\x1a\x1e.luna.plugin.v1.StoreKeysReply\x12F\n" +
+	"\n" +
+	"StoreBatch\x12!.luna.plugin.v1.StoreBatchRequest\x1a\x15.luna.plugin.v1.Empty\x128\n" +
 	"\x03Log\x12\x1a.luna.plugin.v1.LogRequest\x1a\x15.luna.plugin.v1.Empty\x12:\n" +
 	"\x04Emit\x12\x1b.luna.plugin.v1.EmitRequest\x1a\x15.luna.plugin.v1.EmptyB\x19Z\x17luna/internal/plugin/pbb\x06proto3"
 
@@ -1042,55 +1416,70 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_plugin_proto_goTypes = []any{
-	(*Empty)(nil),            // 0: luna.plugin.v1.Empty
-	(*HelloRequest)(nil),     // 1: luna.plugin.v1.HelloRequest
-	(*HelloReply)(nil),       // 2: luna.plugin.v1.HelloReply
-	(*SubscribeRequest)(nil), // 3: luna.plugin.v1.SubscribeRequest
-	(*Event)(nil),            // 4: luna.plugin.v1.Event
-	(*Command)(nil),          // 5: luna.plugin.v1.Command
-	(*CommandResult)(nil),    // 6: luna.plugin.v1.CommandResult
-	(*ChatSendRequest)(nil),  // 7: luna.plugin.v1.ChatSendRequest
-	(*StoreKey)(nil),         // 8: luna.plugin.v1.StoreKey
-	(*StoreValue)(nil),       // 9: luna.plugin.v1.StoreValue
-	(*StoreSetRequest)(nil),  // 10: luna.plugin.v1.StoreSetRequest
-	(*StoreIncrRequest)(nil), // 11: luna.plugin.v1.StoreIncrRequest
-	(*StoreIncrReply)(nil),   // 12: luna.plugin.v1.StoreIncrReply
-	(*StoreKeysRequest)(nil), // 13: luna.plugin.v1.StoreKeysRequest
-	(*StoreKeysReply)(nil),   // 14: luna.plugin.v1.StoreKeysReply
-	(*LogRequest)(nil),       // 15: luna.plugin.v1.LogRequest
-	(*EmitRequest)(nil),      // 16: luna.plugin.v1.EmitRequest
+	(*Empty)(nil),             // 0: luna.plugin.v1.Empty
+	(*HelloRequest)(nil),      // 1: luna.plugin.v1.HelloRequest
+	(*HelloReply)(nil),        // 2: luna.plugin.v1.HelloReply
+	(*SubscribeRequest)(nil),  // 3: luna.plugin.v1.SubscribeRequest
+	(*Event)(nil),             // 4: luna.plugin.v1.Event
+	(*Command)(nil),           // 5: luna.plugin.v1.Command
+	(*CommandResult)(nil),     // 6: luna.plugin.v1.CommandResult
+	(*ChatSendRequest)(nil),   // 7: luna.plugin.v1.ChatSendRequest
+	(*ModRequest)(nil),        // 8: luna.plugin.v1.ModRequest
+	(*TwitchRequest)(nil),     // 9: luna.plugin.v1.TwitchRequest
+	(*TwitchReply)(nil),       // 10: luna.plugin.v1.TwitchReply
+	(*ViewerRequest)(nil),     // 11: luna.plugin.v1.ViewerRequest
+	(*ViewerReply)(nil),       // 12: luna.plugin.v1.ViewerReply
+	(*StoreBatchRequest)(nil), // 13: luna.plugin.v1.StoreBatchRequest
+	(*StoreKey)(nil),          // 14: luna.plugin.v1.StoreKey
+	(*StoreValue)(nil),        // 15: luna.plugin.v1.StoreValue
+	(*StoreSetRequest)(nil),   // 16: luna.plugin.v1.StoreSetRequest
+	(*StoreIncrRequest)(nil),  // 17: luna.plugin.v1.StoreIncrRequest
+	(*StoreIncrReply)(nil),    // 18: luna.plugin.v1.StoreIncrReply
+	(*StoreKeysRequest)(nil),  // 19: luna.plugin.v1.StoreKeysRequest
+	(*StoreKeysReply)(nil),    // 20: luna.plugin.v1.StoreKeysReply
+	(*LogRequest)(nil),        // 21: luna.plugin.v1.LogRequest
+	(*EmitRequest)(nil),       // 22: luna.plugin.v1.EmitRequest
 }
 var file_plugin_proto_depIdxs = []int32{
 	4,  // 0: luna.plugin.v1.Command.event:type_name -> luna.plugin.v1.Event
-	1,  // 1: luna.plugin.v1.Host.Hello:input_type -> luna.plugin.v1.HelloRequest
-	3,  // 2: luna.plugin.v1.Host.Subscribe:input_type -> luna.plugin.v1.SubscribeRequest
-	6,  // 3: luna.plugin.v1.Host.Commands:input_type -> luna.plugin.v1.CommandResult
-	7,  // 4: luna.plugin.v1.Host.ChatSend:input_type -> luna.plugin.v1.ChatSendRequest
-	8,  // 5: luna.plugin.v1.Host.StoreGet:input_type -> luna.plugin.v1.StoreKey
-	10, // 6: luna.plugin.v1.Host.StoreSet:input_type -> luna.plugin.v1.StoreSetRequest
-	8,  // 7: luna.plugin.v1.Host.StoreDelete:input_type -> luna.plugin.v1.StoreKey
-	11, // 8: luna.plugin.v1.Host.StoreIncr:input_type -> luna.plugin.v1.StoreIncrRequest
-	13, // 9: luna.plugin.v1.Host.StoreKeys:input_type -> luna.plugin.v1.StoreKeysRequest
-	15, // 10: luna.plugin.v1.Host.Log:input_type -> luna.plugin.v1.LogRequest
-	16, // 11: luna.plugin.v1.Host.Emit:input_type -> luna.plugin.v1.EmitRequest
-	2,  // 12: luna.plugin.v1.Host.Hello:output_type -> luna.plugin.v1.HelloReply
-	4,  // 13: luna.plugin.v1.Host.Subscribe:output_type -> luna.plugin.v1.Event
-	5,  // 14: luna.plugin.v1.Host.Commands:output_type -> luna.plugin.v1.Command
-	0,  // 15: luna.plugin.v1.Host.ChatSend:output_type -> luna.plugin.v1.Empty
-	9,  // 16: luna.plugin.v1.Host.StoreGet:output_type -> luna.plugin.v1.StoreValue
-	0,  // 17: luna.plugin.v1.Host.StoreSet:output_type -> luna.plugin.v1.Empty
-	0,  // 18: luna.plugin.v1.Host.StoreDelete:output_type -> luna.plugin.v1.Empty
-	12, // 19: luna.plugin.v1.Host.StoreIncr:output_type -> luna.plugin.v1.StoreIncrReply
-	14, // 20: luna.plugin.v1.Host.StoreKeys:output_type -> luna.plugin.v1.StoreKeysReply
-	0,  // 21: luna.plugin.v1.Host.Log:output_type -> luna.plugin.v1.Empty
-	0,  // 22: luna.plugin.v1.Host.Emit:output_type -> luna.plugin.v1.Empty
-	12, // [12:23] is the sub-list for method output_type
-	1,  // [1:12] is the sub-list for method input_type
-	1,  // [1:1] is the sub-list for extension type_name
-	1,  // [1:1] is the sub-list for extension extendee
-	0,  // [0:1] is the sub-list for field type_name
+	16, // 1: luna.plugin.v1.StoreBatchRequest.set:type_name -> luna.plugin.v1.StoreSetRequest
+	1,  // 2: luna.plugin.v1.Host.Hello:input_type -> luna.plugin.v1.HelloRequest
+	3,  // 3: luna.plugin.v1.Host.Subscribe:input_type -> luna.plugin.v1.SubscribeRequest
+	6,  // 4: luna.plugin.v1.Host.Commands:input_type -> luna.plugin.v1.CommandResult
+	7,  // 5: luna.plugin.v1.Host.ChatSend:input_type -> luna.plugin.v1.ChatSendRequest
+	8,  // 6: luna.plugin.v1.Host.Mod:input_type -> luna.plugin.v1.ModRequest
+	9,  // 7: luna.plugin.v1.Host.Twitch:input_type -> luna.plugin.v1.TwitchRequest
+	11, // 8: luna.plugin.v1.Host.Viewer:input_type -> luna.plugin.v1.ViewerRequest
+	14, // 9: luna.plugin.v1.Host.StoreGet:input_type -> luna.plugin.v1.StoreKey
+	16, // 10: luna.plugin.v1.Host.StoreSet:input_type -> luna.plugin.v1.StoreSetRequest
+	14, // 11: luna.plugin.v1.Host.StoreDelete:input_type -> luna.plugin.v1.StoreKey
+	17, // 12: luna.plugin.v1.Host.StoreIncr:input_type -> luna.plugin.v1.StoreIncrRequest
+	19, // 13: luna.plugin.v1.Host.StoreKeys:input_type -> luna.plugin.v1.StoreKeysRequest
+	13, // 14: luna.plugin.v1.Host.StoreBatch:input_type -> luna.plugin.v1.StoreBatchRequest
+	21, // 15: luna.plugin.v1.Host.Log:input_type -> luna.plugin.v1.LogRequest
+	22, // 16: luna.plugin.v1.Host.Emit:input_type -> luna.plugin.v1.EmitRequest
+	2,  // 17: luna.plugin.v1.Host.Hello:output_type -> luna.plugin.v1.HelloReply
+	4,  // 18: luna.plugin.v1.Host.Subscribe:output_type -> luna.plugin.v1.Event
+	5,  // 19: luna.plugin.v1.Host.Commands:output_type -> luna.plugin.v1.Command
+	0,  // 20: luna.plugin.v1.Host.ChatSend:output_type -> luna.plugin.v1.Empty
+	0,  // 21: luna.plugin.v1.Host.Mod:output_type -> luna.plugin.v1.Empty
+	10, // 22: luna.plugin.v1.Host.Twitch:output_type -> luna.plugin.v1.TwitchReply
+	12, // 23: luna.plugin.v1.Host.Viewer:output_type -> luna.plugin.v1.ViewerReply
+	15, // 24: luna.plugin.v1.Host.StoreGet:output_type -> luna.plugin.v1.StoreValue
+	0,  // 25: luna.plugin.v1.Host.StoreSet:output_type -> luna.plugin.v1.Empty
+	0,  // 26: luna.plugin.v1.Host.StoreDelete:output_type -> luna.plugin.v1.Empty
+	18, // 27: luna.plugin.v1.Host.StoreIncr:output_type -> luna.plugin.v1.StoreIncrReply
+	20, // 28: luna.plugin.v1.Host.StoreKeys:output_type -> luna.plugin.v1.StoreKeysReply
+	0,  // 29: luna.plugin.v1.Host.StoreBatch:output_type -> luna.plugin.v1.Empty
+	0,  // 30: luna.plugin.v1.Host.Log:output_type -> luna.plugin.v1.Empty
+	0,  // 31: luna.plugin.v1.Host.Emit:output_type -> luna.plugin.v1.Empty
+	17, // [17:32] is the sub-list for method output_type
+	2,  // [2:17] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -1104,7 +1493,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

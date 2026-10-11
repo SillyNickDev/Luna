@@ -53,7 +53,8 @@ func runDaemon(p paths) error {
 		return fmt.Errorf("database: %w", err)
 	}
 	b := bus.New()
-	publish := withRanks(ranks, st, b.Publish)
+	vt := &viewerTracker{st: st}
+	publish := withRanks(ranks, st, vt.wrap(b.Publish))
 	logSub := b.Subscribe(4096)
 	logged := make(chan struct{})
 	go func() { st.Log(logSub.C); close(logged) }()
@@ -92,8 +93,18 @@ func runDaemon(p paths) error {
 	}
 
 	g := guard.New(cfg.Get)
-	tw := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
+	tw, th := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
 	host := &plugin.Host{Bus: b, Publish: publish, Store: st, Guard: g}
+	if th != nil {
+		host.Twitch = th
+		go func() { // a stream already running when Luna starts counts as online
+			sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			if s, err := tw.Stream(sctx, tw.UserID()); err == nil && s.Live {
+				vt.online(s.StartedAt.Format(time.RFC3339))
+			}
+		}()
+	}
 	caps, err = startCapsules(p, st, publish, host, cfg.Get)
 	if err != nil {
 		return fmt.Errorf("capsules: %w", err)
@@ -164,7 +175,7 @@ func runDaemon(p paths) error {
 // chatterID is the account Luna chats as; its own messages never trigger chat commands.
 var chatterID atomic.Value
 
-func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) *twitch.Client {
+func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) (*twitch.Client, *twitchHost) {
 	store := secrets.Open(p.data)
 	if !store.UsesKeyring() {
 		slog.Warn("OS keyring unreachable from this session; using encrypted token files instead. " +
@@ -174,7 +185,7 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 	if err != nil {
 		slog.Warn("running without twitch", "err", err)
 		twitchState = "offline: " + err.Error()
-		return nil
+		return nil, nil
 	}
 	run := func(c *twitch.Client, subs []twitch.Sub) {
 		go func() {
@@ -201,7 +212,8 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 		slog.Info("no bot account; chatting as the broadcaster", "hint", "luna auth login bot")
 		run(bc, append(twitch.ChannelSubs(b), twitch.ChatSub(b, b)))
 	}
-	g.Live = func(ctx context.Context, text string) error { return chatter.SendChat(ctx, b, text) }
+	th := &twitchHost{bc: bc, chatter: chatter}
+	g.Live = th.send
 	chatterID.Store(chatter.UserID())
-	return bc
+	return bc, th
 }

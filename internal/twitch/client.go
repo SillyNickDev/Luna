@@ -85,28 +85,7 @@ func (c *Client) helix(ctx context.Context, method, path string, body, out any) 
 
 // SendChat posts text as this account in broadcasterID's chat. Callers go through the output guard.
 func (c *Client) SendChat(ctx context.Context, broadcasterID, text string) error {
-	var out struct {
-		Data []struct {
-			IsSent     bool `json:"is_sent"`
-			DropReason *struct {
-				Message string `json:"message"`
-			} `json:"drop_reason"`
-		} `json:"data"`
-	}
-	err := c.helix(ctx, "POST", "/chat/messages", map[string]string{
-		"broadcaster_id": broadcasterID, "sender_id": c.userID, "message": text,
-	}, &out)
-	if err != nil {
-		return err
-	}
-	if len(out.Data) == 0 || !out.Data[0].IsSent {
-		reason := "unknown reason"
-		if len(out.Data) > 0 && out.Data[0].DropReason != nil {
-			reason = out.Data[0].DropReason.Message
-		}
-		return fmt.Errorf("twitch dropped the message: %s", reason)
-	}
-	return nil
+	return c.sendChat(ctx, map[string]string{"broadcaster_id": broadcasterID, "sender_id": c.userID, "message": text})
 }
 
 // validateHourly re-checks the token every hour, as Twitch requires of apps.

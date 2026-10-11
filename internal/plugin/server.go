@@ -30,9 +30,17 @@ type Host struct {
 	Publish func(event.Event)
 	Store   *store.Store
 	Guard   *guard.Guard
+	Twitch  Twitch // nil while Luna runs without Twitch
 
 	mu      sync.Mutex
 	plugins map[string]*server
+}
+
+// Twitch is what plugins may ask of Twitch, always as the channel and through the core.
+type Twitch interface {
+	Mod(ctx context.Context, r *pb.ModRequest) error
+	// Lookup answers a TwitchRequest call; nil means not found.
+	Lookup(ctx context.Context, call, user string) (any, error)
 }
 
 // Plugin is one capsule as the host sees it.
@@ -225,18 +233,127 @@ func (s *server) invoke(ctx context.Context, c *pb.Command) (*pb.CommandResult, 
 }
 
 func (s *server) ChatSend(ctx context.Context, r *pb.ChatSendRequest) (*pb.Empty, error) {
-	if !slices.Contains(s.p.Manifest.Permissions.Chat, "send") {
-		return nil, denied(`"send" to [permissions].chat`)
+	need := r.Mode
+	switch r.Mode {
+	case "":
+		need = "send"
+	case "announce":
+	case "whisper":
+		if r.ToUserId == "" {
+			return nil, status.Error(codes.InvalidArgument, "a whisper needs to_user_id")
+		}
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unknown chat mode %q", r.Mode)
+	}
+	if !slices.Contains(s.p.Manifest.Permissions.Chat, need) {
+		return nil, denied(fmt.Sprintf("%q to [permissions].chat", need))
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := s.h.Guard.Chat(ctx, r.Text, r.Simulated || s.p.Dev); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, status.Error(codes.ResourceExhausted, "chat rate limit: still queued after 30 s")
+	err := s.h.Guard.Send(ctx, guard.Msg{Text: r.Text, ReplyTo: r.ReplyTo, Mode: r.Mode, To: r.ToUserId, Simulated: r.Simulated || s.p.Dev})
+	return &pb.Empty{}, twitchErr(err)
+}
+
+// twitchErr maps an outbound failure to the status the SDKs turn into their errors.
+func twitchErr(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.ResourceExhausted, "rate limit: still queued after 30 s")
+	case errors.Is(err, guard.ErrOffline):
+		return status.Error(codes.Unavailable, err.Error())
+	}
+	return status.Error(codes.FailedPrecondition, err.Error())
+}
+
+// modPerm is the [permissions].mod entry each action needs; lifting a timeout is part of timing out.
+var modPerm = map[string]string{"timeout": "timeout", "ban": "ban", "delete": "delete", "warn": "warn",
+	"shield": "shield", "shoutout": "shoutout"}
+
+func (s *server) Mod(ctx context.Context, r *pb.ModRequest) (*pb.Empty, error) {
+	need, ok := modPerm[r.Action]
+	if r.Action == "unban" {
+		need, ok = "ban", true
+		if slices.Contains(s.p.Manifest.Permissions.Mod, "timeout") {
+			need = "timeout"
 		}
+	}
+	if !ok {
+		return nil, status.Errorf(codes.InvalidArgument, "unknown mod action %q", r.Action)
+	}
+	if !slices.Contains(s.p.Manifest.Permissions.Mod, need) {
+		return nil, denied(fmt.Sprintf("%q to [permissions].mod", need))
+	}
+	desc := r.Action + " " + r.UserId
+	switch {
+	case r.Action == "delete" && r.MessageId == "":
+		return nil, status.Error(codes.InvalidArgument, "delete needs message_id")
+	case r.Action == "delete":
+		desc = "delete message " + r.MessageId
+	case r.Action == "shield":
+		desc = fmt.Sprintf("shield mode on=%v", r.On)
+	case r.UserId == "":
+		return nil, status.Errorf(codes.InvalidArgument, "%s needs user_id", r.Action)
+	case r.Action == "timeout" && (r.Seconds < 1 || r.Seconds > 1209600):
+		return nil, status.Error(codes.InvalidArgument, "a timeout is 1 s to 14 days")
+	case r.Action == "timeout":
+		desc += fmt.Sprintf(" for %ds", r.Seconds)
+	}
+	if r.Reason != "" {
+		desc += " (" + r.Reason + ")"
+	}
+	fmt.Fprintf(s.p.Log, "luna: mod %s\n", desc)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	err := s.h.Guard.Mod(ctx, desc, r.Simulated || s.p.Dev, func(ctx context.Context) error {
+		if s.h.Twitch == nil {
+			return guard.ErrOffline
+		}
+		return s.h.Twitch.Mod(ctx, r)
+	})
+	return &pb.Empty{}, twitchErr(err)
+}
+
+func (s *server) Twitch(ctx context.Context, r *pb.TwitchRequest) (*pb.TwitchReply, error) {
+	if !slices.Contains(s.p.Manifest.Permissions.Twitch, "read") {
+		return nil, denied(`"read" to [permissions].twitch`)
+	}
+	switch r.Call {
+	case "user", "follow":
+		if r.User == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "%s needs user", r.Call)
+		}
+	case "channel", "stream":
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unknown twitch call %q", r.Call)
+	}
+	if s.h.Twitch == nil {
+		return nil, status.Error(codes.Unavailable, guard.ErrOffline.Error())
+	}
+	if strings.HasPrefix(r.User, "sim-") { // simulated viewers don't exist on Twitch
+		return &pb.TwitchReply{DataJson: []byte("null")}, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	v, err := s.h.Twitch.Lookup(ctx, r.Call, r.User)
+	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
-	return &pb.Empty{}, nil
+	b, _ := json.Marshal(v)
+	return &pb.TwitchReply{DataJson: b}, nil
+}
+
+func (s *server) Viewer(_ context.Context, r *pb.ViewerRequest) (*pb.ViewerReply, error) {
+	if !s.p.Manifest.Permissions.Viewers {
+		return nil, denied("viewers = true to [permissions]")
+	}
+	v, err := s.h.Store.GetViewer(r.User)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "viewer lookup failed")
+	}
+	b, _ := json.Marshal(v)
+	return &pb.ViewerReply{DataJson: b}, nil
 }
 
 func (s *server) storeOK() error {
@@ -278,6 +395,23 @@ func (s *server) StoreSet(_ context.Context, r *pb.StoreSetRequest) (*pb.Empty, 
 		return nil, status.Error(codes.InvalidArgument, "ttl can't be negative")
 	}
 	return &pb.Empty{}, storeErr(s.h.Store.PluginSet(s.p.ID, r.Key, r.ValueJson, time.Duration(r.TtlMs)*time.Millisecond))
+}
+
+func (s *server) StoreBatch(_ context.Context, r *pb.StoreBatchRequest) (*pb.Empty, error) {
+	if err := s.storeOK(); err != nil {
+		return nil, err
+	}
+	if len(r.Set)+len(r.Delete) > 500 {
+		return nil, status.Error(codes.InvalidArgument, "a batch holds at most 500 writes")
+	}
+	sets := make([]store.KV, len(r.Set))
+	for i, kv := range r.Set {
+		if !json.Valid(kv.ValueJson) || kv.TtlMs < 0 {
+			return nil, status.Errorf(codes.InvalidArgument, "%s: value isn't JSON or ttl is negative", kv.Key)
+		}
+		sets[i] = store.KV{Key: kv.Key, Value: kv.ValueJson, TTL: time.Duration(kv.TtlMs) * time.Millisecond}
+	}
+	return &pb.Empty{}, storeErr(s.h.Store.PluginBatch(s.p.ID, sets, r.Delete))
 }
 
 func (s *server) StoreDelete(_ context.Context, r *pb.StoreKey) (*pb.Empty, error) {

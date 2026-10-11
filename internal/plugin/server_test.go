@@ -70,9 +70,9 @@ func setup(t *testing.T, manifest string) (*Host, pb.HostClient, *syncBuf, *[]st
 	var sent []string
 	var mu sync.Mutex
 	g := guard.New(func() *config.Config { return config.Default() })
-	g.Sim = func(_ context.Context, text string) error {
+	g.Sim = func(_ context.Context, m guard.Msg) error {
 		mu.Lock()
-		sent = append(sent, text)
+		sent = append(sent, m.Text)
 		mu.Unlock()
 		return nil
 	}
@@ -182,7 +182,8 @@ func TestNoPermissions(t *testing.T) {
 
 func TestManifestRefusals(t *testing.T) {
 	for _, bad := range []string{
-		"[permissions]\nmod = [\"ban\"]\n",
+		"[permissions]\nosc = [\"send\"]\n",
+		"[permissions]\nmod = [\"nuke\"]\n",
 		"[cli]\nname = \"capsule\"\n",
 		"[[chat.commands]]\nname = \"hr\"\ncapability = \"made.up\"\n",
 		"[config]\nx = { type = \"int\", default = \"nope\" }\n",
@@ -193,5 +194,57 @@ func TestManifestRefusals(t *testing.T) {
 		if _, err := Load(dir); err == nil {
 			t.Errorf("accepted:\n%s", bad)
 		}
+	}
+}
+
+func TestModTwitchViewers(t *testing.T) {
+	_, c, logs, sent := setup(t, testPlugin) // chat=send only, no mod/twitch/viewers
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for name, err := range map[string]error{
+		"mod": func() error {
+			_, err := c.Mod(ctx, &pb.ModRequest{Action: "timeout", UserId: "1", Seconds: 60})
+			return err
+		}(),
+		"twitch":   func() error { _, err := c.Twitch(ctx, &pb.TwitchRequest{Call: "stream"}); return err }(),
+		"viewer":   func() error { _, err := c.Viewer(ctx, &pb.ViewerRequest{User: "1"}); return err }(),
+		"announce": func() error { _, err := c.ChatSend(ctx, &pb.ChatSendRequest{Text: "hi", Mode: "announce"}); return err }(),
+	} {
+		if status.Code(err) != codes.PermissionDenied {
+			t.Errorf("%s without permission: %v", name, err)
+		}
+	}
+
+	_, c, logs, sent = setup(t, strings.Replace(testPlugin, `chat = ["send"]`,
+		"chat = [\"send\", \"announce\"]\nmod = [\"timeout\", \"delete\"]\ntwitch = [\"read\"]\nviewers = true", 1))
+	if _, err := c.Mod(ctx, &pb.ModRequest{Action: "timeout", UserId: "1", Seconds: 60, Reason: "caps"}); err != nil {
+		t.Fatalf("dev-mode timeout should print, not fail: %v", err)
+	}
+	if !strings.Contains(logs.String(), "mod timeout 1 for 60s (caps)") {
+		t.Fatalf("mod action not logged: %q", logs.String())
+	}
+	if _, err := c.Mod(ctx, &pb.ModRequest{Action: "unban", UserId: "1"}); err != nil {
+		t.Fatalf("lifting a timeout is part of timeout: %v", err)
+	}
+	if _, err := c.Mod(ctx, &pb.ModRequest{Action: "ban", UserId: "1"}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("ban with only timeout: %v", err)
+	}
+	if _, err := c.Mod(ctx, &pb.ModRequest{Action: "timeout", UserId: "1", Seconds: 0}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("zero timeout: %v", err)
+	}
+	if _, err := c.Twitch(ctx, &pb.TwitchRequest{Call: "stream"}); status.Code(err) != codes.Unavailable {
+		t.Fatalf("twitch offline: %v", err)
+	}
+	if _, err := c.ChatSend(ctx, &pb.ChatSendRequest{Text: "big news", Mode: "announce"}); err != nil || (*sent)[len(*sent)-1] != "big news" {
+		t.Fatalf("announce: %v %q", err, *sent)
+	}
+	if r, err := c.Viewer(ctx, &pb.ViewerRequest{User: "nobody"}); err != nil || string(r.DataJson) != "null" {
+		t.Fatalf("unknown viewer: %s %v", r.GetDataJson(), err)
+	}
+	if _, err := c.StoreBatch(ctx, &pb.StoreBatchRequest{Set: []*pb.StoreSetRequest{{Key: "a", ValueJson: []byte("1")}}, Delete: []string{"b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := c.StoreGet(ctx, &pb.StoreKey{Key: "a"}); string(v.ValueJson) != "1" {
+		t.Fatalf("batch set: %s", v.ValueJson)
 	}
 }

@@ -18,10 +18,19 @@ var ErrBlocked = errors.New("blocked by the output guard")
 
 const maxLen = 500 // Twitch's chat message limit
 
+// Msg is one outbound chat message.
+type Msg struct {
+	Text      string
+	ReplyTo   string // message_id it answers
+	Mode      string // "", "announce" or "whisper"
+	To        string // whisper recipient's user id
+	Simulated bool
+}
+
 type Guard struct {
 	cfg  func() *config.Config
-	Live func(ctx context.Context, text string) error // Twitch; nil until connected
-	Sim  func(ctx context.Context, text string) error // simulated events reply here
+	Live func(ctx context.Context, m Msg) error // Twitch; nil until connected
+	Sim  func(ctx context.Context, m Msg) error // simulated events reply here
 
 	mu     sync.Mutex
 	tokens float64
@@ -29,8 +38,15 @@ type Guard struct {
 }
 
 func New(cfg func() *config.Config) *Guard {
-	return &Guard{cfg: cfg, Sim: func(_ context.Context, text string) error {
-		fmt.Println("[sim chat]", text)
+	return &Guard{cfg: cfg, Sim: func(_ context.Context, m Msg) error {
+		switch m.Mode {
+		case "whisper":
+			fmt.Printf("[sim whisper to %s] %s\n", m.To, m.Text)
+		case "announce":
+			fmt.Println("[sim announce]", m.Text)
+		default:
+			fmt.Println("[sim chat]", m.Text)
+		}
 		return nil
 	}}
 }
@@ -38,8 +54,14 @@ func New(cfg func() *config.Config) *Guard {
 // Chat sends text after cleaning it and checking the blocklist. Live messages
 // wait for the rate limiter, so bursts queue until ctx expires instead of failing.
 func (g *Guard) Chat(ctx context.Context, text string, simulated bool) error {
+	return g.Send(ctx, Msg{Text: text, Simulated: simulated})
+}
+
+// Send is Chat for any kind of message: a reply, an announcement or a whisper.
+func (g *Guard) Send(ctx context.Context, m Msg) error {
 	c := g.cfg()
-	text = Clean(text)
+	m.Text = Clean(m.Text)
+	text := m.Text
 	if text == "" {
 		return errors.New("empty message")
 	}
@@ -48,16 +70,28 @@ func (g *Guard) Chat(ctx context.Context, text string, simulated bool) error {
 			return ErrBlocked
 		}
 	}
-	if simulated {
-		return g.Sim(ctx, text)
+	if m.Simulated {
+		return g.Sim(ctx, m)
 	}
 	if g.Live == nil {
-		return errors.New("twitch is not connected")
+		return ErrOffline
 	}
 	if err := g.wait(ctx, c.Chat.RateLimit); err != nil {
 		return err
 	}
-	return g.Live(ctx, text)
+	return g.Live(ctx, m)
+}
+
+var ErrOffline = errors.New("twitch is not connected")
+
+// Mod runs a moderation action, or prints desc instead when it answers a simulated event.
+// shortcut: no rate limit on mod actions; Twitch's own (~100/min) applies, add one if nukes hit it.
+func (g *Guard) Mod(ctx context.Context, desc string, simulated bool, act func(context.Context) error) error {
+	if simulated {
+		fmt.Println("[sim mod]", desc)
+		return nil
+	}
+	return act(ctx)
 }
 
 // Clean flattens control characters, escapes a leading / or . so relayed viewer

@@ -19,11 +19,20 @@ service Host {
   rpc Commands(stream CommandResult) returns (stream Command);
 
   rpc ChatSend(ChatSendRequest) returns (Empty);
+  // Mod takes a moderation action as the channel; needs the action in [permissions].mod.
+  rpc Mod(ModRequest) returns (Empty);
+  // Twitch reads public channel facts (users, the channel, the stream, follows); needs
+  // "read" in [permissions].twitch. Not found answers data_json "null".
+  rpc Twitch(TwitchRequest) returns (TwitchReply);
+  // Viewer is Luna's shared profile of a chatter; needs viewers = true.
+  rpc Viewer(ViewerRequest) returns (ViewerReply);
   rpc StoreGet(StoreKey) returns (StoreValue);
   rpc StoreSet(StoreSetRequest) returns (Empty);
   rpc StoreDelete(StoreKey) returns (Empty);
   rpc StoreIncr(StoreIncrRequest) returns (StoreIncrReply);
   rpc StoreKeys(StoreKeysRequest) returns (StoreKeysReply);
+  // StoreBatch applies its sets and deletes atomically.
+  rpc StoreBatch(StoreBatchRequest) returns (Empty);
   rpc Log(LogRequest) returns (Empty);
   // Emit publishes plugin.<id>.<name> on the bus.
   rpc Emit(EmitRequest) returns (Empty);
@@ -74,7 +83,41 @@ message CommandResult {
 message ChatSendRequest {
   string text = 1;
   bool simulated = 2;  // replying to a simulated event: goes to the terminal, not Twitch
-  string reply_to = 3; // event id of the message being answered, if any
+  string reply_to = 3; // message_id of the chat message being answered, if any
+  string mode = 4;     // "" (a chat message), "announce" or "whisper"; each needs its name in [permissions].chat
+  string to_user_id = 5; // whisper: who receives it
+}
+
+message ModRequest {
+  string action = 1;     // timeout, ban, unban, delete, warn, shield, shoutout
+  string user_id = 2;    // the viewer acted on (shoutout: the channel)
+  int64 seconds = 3;     // timeout length
+  string reason = 4;
+  string message_id = 5; // delete
+  bool on = 6;           // shield
+  bool simulated = 7;    // acting on a simulated event: printed, never sent
+}
+
+message TwitchRequest {
+  string call = 1; // user (by login or id), channel, stream (empty user = this channel), follow (user id)
+  string user = 2;
+}
+
+message TwitchReply {
+  bytes data_json = 1;
+}
+
+message ViewerRequest {
+  string user = 1; // Twitch user id, or login
+}
+
+message ViewerReply {
+  bytes data_json = 1; // null when Luna hasn't seen them
+}
+
+message StoreBatchRequest {
+  repeated StoreSetRequest set = 1;
+  repeated string delete = 2;
 }
 
 message StoreKey {

@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"luna/internal/event"
@@ -19,6 +21,11 @@ var simList = []struct{ name, typ, usage string }{
 	{"cheer", "twitch.channel.cheer", "[--user x] [--bits N]"},
 	{"raid", "twitch.channel.raid", "[--user x] [--viewers N]"},
 	{"redeem", "twitch.channel.redeem", `[--user x] "Reward" [input]`},
+	{"resub", "twitch.channel.resub", "[--user x] [--months N] [message]"},
+	{"gift", "twitch.channel.gift", "[--user x] [--count N]"},
+	{"online", "twitch.stream.online", ""},
+	{"offline", "twitch.stream.offline", ""},
+	{"update", "twitch.channel.update", `"Game" [title]`},
 	{"hr", "hr.update", "<bpm>"},
 }
 
@@ -44,6 +51,8 @@ func simEvent(args []string) (event.Event, error) {
 	tier := fs.Int("tier", 1, "")
 	bits := fs.Int("bits", 100, "")
 	viewers := fs.Int("viewers", 10, "")
+	months := fs.Int("months", 3, "")
+	count := fs.Int("count", 5, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return event.Event{}, err
 	}
@@ -52,7 +61,7 @@ func simEvent(args []string) (event.Event, error) {
 	if *role != "" {
 		roles = strings.Split(*role, ",")
 	}
-	user := map[string]any{"id": "sim-" + *login, "login": *login, "roles": roles}
+	user := map[string]any{"id": "sim-" + *login, "login": *login, "name": *login, "roles": roles}
 
 	var data map[string]any
 	switch name {
@@ -61,7 +70,7 @@ func simEvent(args []string) (event.Event, error) {
 		if text == "" || utf8.RuneCountInString(text) > 500 {
 			return event.Event{}, errors.New("chat text must be 1-500 characters")
 		}
-		data = map[string]any{"user": user, "text": text}
+		data = map[string]any{"user": user, "text": text, "message_id": fmt.Sprintf("sim-%d", rand.Int64()), "emotes": 0}
 	case "follow":
 		data = map[string]any{"user": user}
 	case "sub":
@@ -84,6 +93,25 @@ func simEvent(args []string) (event.Event, error) {
 			return event.Event{}, errors.New(`usage: luna sim redeem "Reward" [input]`)
 		}
 		data = map[string]any{"user": user, "reward": pos[0], "input": strings.Join(pos[1:], " ")}
+	case "resub":
+		if *months < 1 {
+			return event.Event{}, errors.New("--months must be at least 1")
+		}
+		data = map[string]any{"user": user, "tier": *tier, "months": *months, "streak": *months, "message": strings.Join(pos, " ")}
+	case "gift":
+		if *count < 1 || *count > 100 {
+			return event.Event{}, errors.New("--count must be 1-100")
+		}
+		data = map[string]any{"user": user, "tier": *tier, "count": *count, "anonymous": false}
+	case "online":
+		data = map[string]any{"started_at": time.Now().UTC().Format(time.RFC3339)}
+	case "offline":
+		data = map[string]any{}
+	case "update":
+		if len(pos) == 0 {
+			return event.Event{}, errors.New(`usage: luna sim update "Game" [title]`)
+		}
+		data = map[string]any{"game": pos[0], "title": strings.Join(pos[1:], " ")}
 	case "hr":
 		bpm, err := strconv.Atoi(strings.Join(pos, ""))
 		if err != nil || bpm < 20 || bpm > 250 {

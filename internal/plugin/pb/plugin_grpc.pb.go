@@ -27,11 +27,15 @@ const (
 	Host_Subscribe_FullMethodName   = "/luna.plugin.v1.Host/Subscribe"
 	Host_Commands_FullMethodName    = "/luna.plugin.v1.Host/Commands"
 	Host_ChatSend_FullMethodName    = "/luna.plugin.v1.Host/ChatSend"
+	Host_Mod_FullMethodName         = "/luna.plugin.v1.Host/Mod"
+	Host_Twitch_FullMethodName      = "/luna.plugin.v1.Host/Twitch"
+	Host_Viewer_FullMethodName      = "/luna.plugin.v1.Host/Viewer"
 	Host_StoreGet_FullMethodName    = "/luna.plugin.v1.Host/StoreGet"
 	Host_StoreSet_FullMethodName    = "/luna.plugin.v1.Host/StoreSet"
 	Host_StoreDelete_FullMethodName = "/luna.plugin.v1.Host/StoreDelete"
 	Host_StoreIncr_FullMethodName   = "/luna.plugin.v1.Host/StoreIncr"
 	Host_StoreKeys_FullMethodName   = "/luna.plugin.v1.Host/StoreKeys"
+	Host_StoreBatch_FullMethodName  = "/luna.plugin.v1.Host/StoreBatch"
 	Host_Log_FullMethodName         = "/luna.plugin.v1.Host/Log"
 	Host_Emit_FullMethodName        = "/luna.plugin.v1.Host/Emit"
 )
@@ -50,11 +54,20 @@ type HostClient interface {
 	// on the same stream, matched by id.
 	Commands(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[CommandResult, Command], error)
 	ChatSend(ctx context.Context, in *ChatSendRequest, opts ...grpc.CallOption) (*Empty, error)
+	// Mod takes a moderation action as the channel; needs the action in [permissions].mod.
+	Mod(ctx context.Context, in *ModRequest, opts ...grpc.CallOption) (*Empty, error)
+	// Twitch reads public channel facts (users, the channel, the stream, follows); needs
+	// "read" in [permissions].twitch. Not found answers data_json "null".
+	Twitch(ctx context.Context, in *TwitchRequest, opts ...grpc.CallOption) (*TwitchReply, error)
+	// Viewer is Luna's shared profile of a chatter; needs viewers = true.
+	Viewer(ctx context.Context, in *ViewerRequest, opts ...grpc.CallOption) (*ViewerReply, error)
 	StoreGet(ctx context.Context, in *StoreKey, opts ...grpc.CallOption) (*StoreValue, error)
 	StoreSet(ctx context.Context, in *StoreSetRequest, opts ...grpc.CallOption) (*Empty, error)
 	StoreDelete(ctx context.Context, in *StoreKey, opts ...grpc.CallOption) (*Empty, error)
 	StoreIncr(ctx context.Context, in *StoreIncrRequest, opts ...grpc.CallOption) (*StoreIncrReply, error)
 	StoreKeys(ctx context.Context, in *StoreKeysRequest, opts ...grpc.CallOption) (*StoreKeysReply, error)
+	// StoreBatch applies its sets and deletes atomically.
+	StoreBatch(ctx context.Context, in *StoreBatchRequest, opts ...grpc.CallOption) (*Empty, error)
 	Log(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (*Empty, error)
 	// Emit publishes plugin.<id>.<name> on the bus.
 	Emit(ctx context.Context, in *EmitRequest, opts ...grpc.CallOption) (*Empty, error)
@@ -120,6 +133,36 @@ func (c *hostClient) ChatSend(ctx context.Context, in *ChatSendRequest, opts ...
 	return out, nil
 }
 
+func (c *hostClient) Mod(ctx context.Context, in *ModRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, Host_Mod_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostClient) Twitch(ctx context.Context, in *TwitchRequest, opts ...grpc.CallOption) (*TwitchReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TwitchReply)
+	err := c.cc.Invoke(ctx, Host_Twitch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostClient) Viewer(ctx context.Context, in *ViewerRequest, opts ...grpc.CallOption) (*ViewerReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ViewerReply)
+	err := c.cc.Invoke(ctx, Host_Viewer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *hostClient) StoreGet(ctx context.Context, in *StoreKey, opts ...grpc.CallOption) (*StoreValue, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StoreValue)
@@ -170,6 +213,16 @@ func (c *hostClient) StoreKeys(ctx context.Context, in *StoreKeysRequest, opts .
 	return out, nil
 }
 
+func (c *hostClient) StoreBatch(ctx context.Context, in *StoreBatchRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, Host_StoreBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *hostClient) Log(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (*Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Empty)
@@ -204,11 +257,20 @@ type HostServer interface {
 	// on the same stream, matched by id.
 	Commands(grpc.BidiStreamingServer[CommandResult, Command]) error
 	ChatSend(context.Context, *ChatSendRequest) (*Empty, error)
+	// Mod takes a moderation action as the channel; needs the action in [permissions].mod.
+	Mod(context.Context, *ModRequest) (*Empty, error)
+	// Twitch reads public channel facts (users, the channel, the stream, follows); needs
+	// "read" in [permissions].twitch. Not found answers data_json "null".
+	Twitch(context.Context, *TwitchRequest) (*TwitchReply, error)
+	// Viewer is Luna's shared profile of a chatter; needs viewers = true.
+	Viewer(context.Context, *ViewerRequest) (*ViewerReply, error)
 	StoreGet(context.Context, *StoreKey) (*StoreValue, error)
 	StoreSet(context.Context, *StoreSetRequest) (*Empty, error)
 	StoreDelete(context.Context, *StoreKey) (*Empty, error)
 	StoreIncr(context.Context, *StoreIncrRequest) (*StoreIncrReply, error)
 	StoreKeys(context.Context, *StoreKeysRequest) (*StoreKeysReply, error)
+	// StoreBatch applies its sets and deletes atomically.
+	StoreBatch(context.Context, *StoreBatchRequest) (*Empty, error)
 	Log(context.Context, *LogRequest) (*Empty, error)
 	// Emit publishes plugin.<id>.<name> on the bus.
 	Emit(context.Context, *EmitRequest) (*Empty, error)
@@ -234,6 +296,15 @@ func (UnimplementedHostServer) Commands(grpc.BidiStreamingServer[CommandResult, 
 func (UnimplementedHostServer) ChatSend(context.Context, *ChatSendRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method ChatSend not implemented")
 }
+func (UnimplementedHostServer) Mod(context.Context, *ModRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method Mod not implemented")
+}
+func (UnimplementedHostServer) Twitch(context.Context, *TwitchRequest) (*TwitchReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Twitch not implemented")
+}
+func (UnimplementedHostServer) Viewer(context.Context, *ViewerRequest) (*ViewerReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Viewer not implemented")
+}
 func (UnimplementedHostServer) StoreGet(context.Context, *StoreKey) (*StoreValue, error) {
 	return nil, status.Error(codes.Unimplemented, "method StoreGet not implemented")
 }
@@ -248,6 +319,9 @@ func (UnimplementedHostServer) StoreIncr(context.Context, *StoreIncrRequest) (*S
 }
 func (UnimplementedHostServer) StoreKeys(context.Context, *StoreKeysRequest) (*StoreKeysReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method StoreKeys not implemented")
+}
+func (UnimplementedHostServer) StoreBatch(context.Context, *StoreBatchRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method StoreBatch not implemented")
 }
 func (UnimplementedHostServer) Log(context.Context, *LogRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Log not implemented")
@@ -326,6 +400,60 @@ func _Host_ChatSend_Handler(srv interface{}, ctx context.Context, dec func(inter
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(HostServer).ChatSend(ctx, req.(*ChatSendRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Host_Mod_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).Mod(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_Mod_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).Mod(ctx, req.(*ModRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Host_Twitch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TwitchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).Twitch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_Twitch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).Twitch(ctx, req.(*TwitchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Host_Viewer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ViewerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).Viewer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_Viewer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).Viewer(ctx, req.(*ViewerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -420,6 +548,24 @@ func _Host_StoreKeys_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Host_StoreBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StoreBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).StoreBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_StoreBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).StoreBatch(ctx, req.(*StoreBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Host_Log_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LogRequest)
 	if err := dec(in); err != nil {
@@ -472,6 +618,18 @@ var Host_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Host_ChatSend_Handler,
 		},
 		{
+			MethodName: "Mod",
+			Handler:    _Host_Mod_Handler,
+		},
+		{
+			MethodName: "Twitch",
+			Handler:    _Host_Twitch_Handler,
+		},
+		{
+			MethodName: "Viewer",
+			Handler:    _Host_Viewer_Handler,
+		},
+		{
 			MethodName: "StoreGet",
 			Handler:    _Host_StoreGet_Handler,
 		},
@@ -490,6 +648,10 @@ var Host_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StoreKeys",
 			Handler:    _Host_StoreKeys_Handler,
+		},
+		{
+			MethodName: "StoreBatch",
+			Handler:    _Host_StoreBatch_Handler,
 		},
 		{
 			MethodName: "Log",

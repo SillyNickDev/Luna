@@ -59,6 +59,11 @@ func ChannelSubs(b string) []Sub {
 		{"channel.channel_points_custom_reward_redemption.add", "1", map[string]string{"broadcaster_user_id": b}},
 		{"channel.moderator.add", "1", map[string]string{"broadcaster_user_id": b}},
 		{"channel.moderator.remove", "1", map[string]string{"broadcaster_user_id": b}},
+		{"stream.online", "1", map[string]string{"broadcaster_user_id": b}},
+		{"stream.offline", "1", map[string]string{"broadcaster_user_id": b}},
+		{"channel.update", "2", map[string]string{"broadcaster_user_id": b}},
+		{"channel.subscription.gift", "1", map[string]string{"broadcaster_user_id": b}},
+		{"channel.subscription.message", "1", map[string]string{"broadcaster_user_id": b}},
 	}
 }
 
@@ -196,10 +201,13 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 	var e struct {
 		UserID       string          `json:"user_id"`
 		UserLogin    string          `json:"user_login"`
+		UserName     string          `json:"user_name"`
 		ChatterID    string          `json:"chatter_user_id"`
 		ChatterLogin string          `json:"chatter_user_login"`
+		ChatterName  string          `json:"chatter_user_name"`
 		FromID       string          `json:"from_broadcaster_user_id"`
 		FromLogin    string          `json:"from_broadcaster_user_login"`
+		FromName     string          `json:"from_broadcaster_user_name"`
 		MessageID    string          `json:"message_id"`
 		Message      json.RawMessage `json:"message"` // object in chat, string in cheer
 		Badges       []struct {
@@ -214,21 +222,38 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 		Reward      struct {
 			Title string `json:"title"`
 		} `json:"reward"`
+		Total        int    `json:"total"`
+		Cumulative   int    `json:"cumulative_months"`
+		Streak       int    `json:"streak_months"`
+		Title        string `json:"title"`
+		CategoryName string `json:"category_name"`
+		StartedAt    string `json:"started_at"`
 	}
 	if err := json.Unmarshal(raw, &e); err != nil {
 		return event.Event{}, err
 	}
-	user := func(id, login string) map[string]any {
-		return map[string]any{"id": id, "login": login, "roles": []string{}}
+	user := func(id, login, name string) map[string]any {
+		return map[string]any{"id": id, "login": login, "name": name, "roles": []string{}}
 	}
+	tier, _ := strconv.Atoi(e.Tier)
+	tier /= 1000
 	var typ string
 	var data map[string]any
 	switch subType {
 	case "channel.chat.message":
 		var msg struct {
-			Text string `json:"text"`
+			Text      string `json:"text"`
+			Fragments []struct {
+				Type string `json:"type"`
+			} `json:"fragments"`
 		}
 		json.Unmarshal(e.Message, &msg)
+		emotes := 0
+		for _, f := range msg.Fragments {
+			if f.Type == "emote" {
+				emotes++
+			}
+		}
 		roles := []string{}
 		for _, b := range e.Badges {
 			switch b.SetID {
@@ -239,24 +264,40 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 			}
 		}
 		typ = "twitch.chat.message"
-		data = map[string]any{"user": map[string]any{"id": e.ChatterID, "login": e.ChatterLogin, "roles": roles}, "text": msg.Text, "message_id": e.MessageID}
+		data = map[string]any{"user": map[string]any{"id": e.ChatterID, "login": e.ChatterLogin, "name": e.ChatterName, "roles": roles},
+			"text": msg.Text, "message_id": e.MessageID, "emotes": emotes}
 	case "channel.follow":
-		typ, data = "twitch.channel.follow", map[string]any{"user": user(e.UserID, e.UserLogin)}
+		typ, data = "twitch.channel.follow", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName)}
 	case "channel.subscribe":
-		tier, _ := strconv.Atoi(e.Tier)
-		typ, data = "twitch.channel.subscribe", map[string]any{"user": user(e.UserID, e.UserLogin), "tier": tier / 1000, "gift": e.IsGift}
+		typ, data = "twitch.channel.subscribe", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName), "tier": tier, "gift": e.IsGift}
+	case "channel.subscription.message":
+		var msg struct {
+			Text string `json:"text"`
+		}
+		json.Unmarshal(e.Message, &msg)
+		typ, data = "twitch.channel.resub", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName), "tier": tier,
+			"months": e.Cumulative, "streak": e.Streak, "message": msg.Text}
+	case "channel.subscription.gift":
+		typ, data = "twitch.channel.gift", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName), "tier": tier,
+			"count": e.Total, "anonymous": e.IsAnonymous}
+	case "stream.online":
+		typ, data = "twitch.stream.online", map[string]any{"started_at": e.StartedAt}
+	case "stream.offline":
+		typ, data = "twitch.stream.offline", map[string]any{}
+	case "channel.update":
+		typ, data = "twitch.channel.update", map[string]any{"title": e.Title, "game": e.CategoryName}
 	case "channel.cheer":
 		var msg string
 		json.Unmarshal(e.Message, &msg)
-		typ, data = "twitch.channel.cheer", map[string]any{"user": user(e.UserID, e.UserLogin), "bits": e.Bits, "message": msg, "anonymous": e.IsAnonymous}
+		typ, data = "twitch.channel.cheer", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName), "bits": e.Bits, "message": msg, "anonymous": e.IsAnonymous}
 	case "channel.raid":
-		typ, data = "twitch.channel.raid", map[string]any{"user": user(e.FromID, e.FromLogin), "viewers": e.Viewers}
+		typ, data = "twitch.channel.raid", map[string]any{"user": user(e.FromID, e.FromLogin, e.FromName), "viewers": e.Viewers}
 	case "channel.channel_points_custom_reward_redemption.add":
-		typ, data = "twitch.channel.redeem", map[string]any{"user": user(e.UserID, e.UserLogin), "reward": e.Reward.Title, "input": e.UserInput}
+		typ, data = "twitch.channel.redeem", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName), "reward": e.Reward.Title, "input": e.UserInput}
 	case "channel.moderator.add":
-		typ, data = "twitch.channel.moderator.add", map[string]any{"user": user(e.UserID, e.UserLogin)}
+		typ, data = "twitch.channel.moderator.add", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName)}
 	case "channel.moderator.remove":
-		typ, data = "twitch.channel.moderator.remove", map[string]any{"user": user(e.UserID, e.UserLogin)}
+		typ, data = "twitch.channel.moderator.remove", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName)}
 	default:
 		return event.Event{}, fmt.Errorf("unhandled subscription type %q", subType)
 	}
