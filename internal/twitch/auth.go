@@ -37,7 +37,7 @@ var Scopes = map[string][]string{
 		// Polls: native polls and predictions
 		"channel:manage:polls", "channel:manage:predictions",
 	},
-	"bot": {"user:read:chat", "user:write:chat", "user:bot"},
+	"bot": {"user:read:chat", "user:write:chat", "user:bot", "user:manage:whispers"}, // whispers come from the chatter
 }
 
 // ErrAuth means the token was rejected and can't be refreshed: log in again.
