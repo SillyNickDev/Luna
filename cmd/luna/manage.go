@@ -24,7 +24,7 @@ import (
 	"luna/internal/plugin"
 )
 
-const lunaVersion = "0.1.0-dev"
+var lunaVersion = "0.1.0-dev" // make VERSION=x stamps releases
 
 func versionText() string {
 	rev := ""

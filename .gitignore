@@ -4,3 +4,5 @@
 *.db-*
 *.sock
 __pycache__/
+/dist/
+/build/
