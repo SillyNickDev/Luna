@@ -24,9 +24,14 @@ func Describe(dir, runDir, runtimesDir string, sdkDirs map[string]string) ([]byt
 		return nil, err
 	}
 	family, _, _ := strings.Cut(m.Runtime, "-")
-	if sdkDirs[family] == "" {
+	mounts := []sandbox.Mount{{Src: dir, Dst: "/pkg"}}
+	switch {
+	case sdkDirs[family] != "":
+		mounts = append(mounts, sandbox.Mount{Src: sdkDirs[family], Dst: "/sdk"})
+	case m.Runtime != "native": // a native binary carries its SDK
 		return nil, fmt.Errorf("no SDK can describe %s plugins", m.Runtime)
 	}
+	mounts = append(mounts, ls.mounts...)
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -39,7 +44,7 @@ func Describe(dir, runDir, runtimesDir string, sdkDirs map[string]string) ([]byt
 	p, err := sandbox.Start(sandbox.Spec{
 		Name:   m.ID + "-describe",
 		Root:   root,
-		Mounts: append([]sandbox.Mount{{Src: dir, Dst: "/pkg"}, {Src: sdkDirs[family], Dst: "/sdk"}}, ls.mounts...),
+		Mounts: mounts,
 		Argv:   ls.argv,
 		Env:    append([]string{"LUNA_DESCRIBE=1", "HOME=/pkg"}, ls.env...),
 		Dir:    "/pkg",

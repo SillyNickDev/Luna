@@ -1,0 +1,25 @@
+id = "dev.test.live"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "native"
+entry = "live"
+
+[permissions]
+events = ["twitch.channel.follow"]
+chat = ["send"]
+store = true
+
+[cli]
+name = "live"
+
+[[cli.commands]]
+name = "count"
+summary = "follows seen"
+
+[config]
+greeting = { type = "str", default = "Welcome" }
+
+[links]
+provides = ["echo"]

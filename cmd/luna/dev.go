@@ -99,7 +99,7 @@ func capsuleInit(args []string) error {
 	}
 	tpl, ok := templates[*rt]
 	if !ok {
-		return fmt.Errorf("runtime %s has no template; python-3.12 and node-22 do (Go plugins build as native: see sdk/go)", *rt)
+		return fmt.Errorf("runtime %s has no template; python-3.12 and node-22 do (Go and Rust plugins build as native: see Docs/sdk-development.md)", *rt)
 	}
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("%s already exists", name)
