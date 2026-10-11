@@ -17,8 +17,9 @@ type request struct {
 }
 
 type response struct {
-	Out string `json:"out,omitempty"`
-	Err string `json:"err,omitempty"`
+	Out  string `json:"out,omitempty"`
+	Err  string `json:"err,omitempty"`
+	Code int    `json:"code,omitempty"` // exit code for the CLI, when not 1
 }
 
 func listen(sock string) (net.Listener, error) {
@@ -49,13 +50,17 @@ func serve(ln net.Listener, handle func(request) (string, error)) {
 			if !peerOK(c) {
 				return
 			}
-			c.SetDeadline(time.Now().Add(10 * time.Second))
+			c.SetDeadline(time.Now().Add(40 * time.Second)) // plugin commands may take 30 s
 			var req request
 			var resp response
 			if err := json.NewDecoder(io.LimitReader(c, 64<<10)).Decode(&req); err != nil {
 				resp.Err = "bad request"
 			} else if out, err := handle(req); err != nil {
 				resp.Err = err.Error()
+				var ee exitErr
+				if errors.As(err, &ee) {
+					resp.Code = ee.code
+				}
 			} else {
 				resp.Out = out
 			}
@@ -75,7 +80,7 @@ func call(p paths, req request) error {
 func callOut(p paths, req request) (string, error) {
 	c, err := net.Dial("unix", p.sock)
 	if err != nil {
-		return "", errors.New("the daemon isn't running; start it with: luna run")
+		return "", exitErr{3, "the daemon isn't running; start it with: luna run"}
 	}
 	defer c.Close()
 	if err := json.NewEncoder(c).Encode(req); err != nil {
@@ -86,6 +91,9 @@ func callOut(p paths, req request) (string, error) {
 		return "", err
 	}
 	if resp.Err != "" {
+		if resp.Code != 0 {
+			return "", exitErr{resp.Code, resp.Err}
+		}
 		return "", errors.New(resp.Err)
 	}
 	return resp.Out, nil

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"luna/internal/capsule/sandbox"
 	"luna/internal/config"
@@ -29,7 +31,10 @@ const usageText = `usage: luna [--config <dir>] <command>
   capsule list | enable | disable | restart | logs | inspect <name>
   capsule uninstall <name> [--keep-data]
   capsule doctor | pack [dir] [-o file] | verify <path>
+  capsule init <name> | dev [dir] [--live] | runtime add python-3.12
                         plugins, each in its own sandbox
+  <plugin> <command> [args] [--json]
+                        a plugin's own commands (luna <plugin> --help)
 `
 
 type paths struct{ config, data, sock string }
@@ -68,6 +73,10 @@ func main() {
 			if _, err = config.Load(p.config); err == nil {
 				fmt.Println("config ok:", p.config)
 			}
+		case args[0] == "plugin" && len(args) > 1:
+			err = call(p, request{Cmd: "plugin", Args: args[1:]})
+		case !strings.HasPrefix(args[0], "-"):
+			err = call(p, request{Cmd: "plugin", Args: args}) // a plugin's command group: luna hrc status
 		default:
 			fs.Usage()
 			os.Exit(2)
@@ -75,6 +84,10 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "luna:", err)
+		var ee exitErr
+		if errors.As(err, &ee) {
+			os.Exit(ee.code)
+		}
 		os.Exit(1)
 	}
 }

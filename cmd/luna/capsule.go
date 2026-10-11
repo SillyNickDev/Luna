@@ -312,6 +312,9 @@ func capsuleCmd(p paths, args []string, rt *capsule.Runtime, st *store.Store) (s
 		if err != nil {
 			return "", err
 		}
+		if err := checkClash(rt, u); err != nil {
+			return "", err
+		}
 		if args[2] == "live" {
 			devCapsules.Delete(u.Manifest.ID)
 		} else {
@@ -427,6 +430,9 @@ func registerCapsule(p paths, args []string, rt *capsule.Runtime, st *store.Stor
 		return "", errors.New("approval doesn't match this package's permissions; install again")
 	}
 	m := u.Manifest
+	if err := checkClash(rt, u); err != nil {
+		return "", err
+	}
 	c, err := rt.Enable(u, m.Links.Uses)
 	if err != nil {
 		return "", err
@@ -511,4 +517,13 @@ func gcStore(p paths, st *store.Store) {
 		}
 		os.RemoveAll(filepath.Join(p.capsuleStore(), e.Name()))
 	}
+}
+
+func checkClash(rt *capsule.Runtime, u *capsule.Unpacked) error {
+	pm, err := plugin.Load(u.Dir)
+	if err != nil {
+		return err
+	}
+	pm.ID = u.Manifest.ID
+	return claimsClash(rt, pm.ID, pm)
 }

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"luna/internal/config"
 	"luna/internal/event"
 	"luna/internal/guard"
+	"luna/internal/perms"
 	"luna/internal/plugin"
 	"luna/internal/secrets"
 	"luna/internal/store"
@@ -85,6 +87,10 @@ func runDaemon(p paths) error {
 	if err != nil {
 		return fmt.Errorf("capsules: %w", err)
 	}
+	router := &chatRouter{rt: caps, host: host, policy: func() *perms.Policy { return policyFrom(cfg.Get()) },
+		botID: func() string { id, _ := chatterID.Load().(string); return id }}
+	chatSub := b.Subscribe(256, "twitch.chat.message")
+	go router.run(chatSub)
 
 	slog.Info("luna running", "config", p.config, "data", p.data)
 	serve(ln, func(req request) (string, error) {
@@ -111,6 +117,8 @@ func runDaemon(p paths) error {
 			return permsCmd(pctx, req.Args, ranks, st, tw, policyFrom(cfg.Get()))
 		case "capsule":
 			return capsuleCmd(p, req.Args, caps, st)
+		case "plugin":
+			return pluginCLI(ctx, caps, host, req.Args)
 		case "reload":
 			err := cfg.Reload()
 			onReload(err)
@@ -124,6 +132,7 @@ func runDaemon(p paths) error {
 
 	slog.Info("shutting down")
 	caps.StopAll()
+	chatSub.Close()
 	printSub.Close()
 	logSub.Close()
 	<-logged // flush the event log before the database closes
@@ -133,6 +142,9 @@ func runDaemon(p paths) error {
 // startTwitch connects the broadcaster account and, if logged in, the bot account,
 // which then reads and sends chat. Without a broadcaster login Luna runs offline.
 // ponytail: client ID and tokens are read once; changing them needs a restart.
+// chatterID is the account Luna chats as; its own messages never trigger chat commands.
+var chatterID atomic.Value
+
 func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, publish func(event.Event)) *twitch.Client {
 	store := secrets.Open(p.data)
 	if !store.UsesKeyring() {
@@ -162,5 +174,6 @@ func startTwitch(ctx context.Context, p paths, clientID string, g *guard.Guard, 
 		run(bc, append(twitch.ChannelSubs(b), twitch.ChatSub(b, b)))
 	}
 	g.Live = func(ctx context.Context, text string) error { return chatter.SendChat(ctx, b, text) }
+	chatterID.Store(chatter.UserID())
 	return bc
 }
