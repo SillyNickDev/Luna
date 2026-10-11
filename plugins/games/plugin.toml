@@ -1,0 +1,51 @@
+id = "luna.games"
+name = "Games: duels, heists and trivia with Points"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__games"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+events = ["twitch.chat.message", "twitch.stream.online", "twitch.stream.offline", "twitch.channel.update"]
+chat = ["send"]
+twitch = ["read"]
+store = true
+
+[links]
+uses = ["luna.points:spend", "luna.points:add"]
+
+[[chat.commands]]
+name = "duel"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "accept"
+
+[[chat.commands]]
+name = "heist"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "trivia"
+cooldown = { global = "60s" }
+
+# Trivia questions go in luna.toml:
+#   [[plugins.games.trivia]]
+#   question = "What's the capital of Australia?"
+#   answer = "Canberra"          # several accepted answers: "Canberra|canberra city"
+#   reward = 50
+[config]
+live_only = { type = "bool", default = true }
+max_bet = { type = "int", default = 1000 }
+disabled_categories = { type = "str", default = "" }
+duel_accept_s = { type = "int", default = 30 }
+heist_join_s = { type = "int", default = 60 }
+heist_base_chance = { type = "int", default = 30 }
+heist_per_member = { type = "int", default = 5 }
+heist_max_chance = { type = "int", default = 80 }
+heist_payout_percent = { type = "int", default = 200 }
+trivia = { type = "list", default = [] }
+trivia_answer_s = { type = "int", default = 30 }

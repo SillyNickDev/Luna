@@ -34,6 +34,8 @@ var Scopes = map[string][]string{
 		"user:manage:whispers",
 		// Stream tools: title and category, markers, clips, ads, raids
 		"channel:manage:broadcast", "clips:edit", "channel:read:ads", "channel:manage:ads", "channel:manage:raids",
+		// Polls: native polls and predictions
+		"channel:manage:polls", "channel:manage:predictions",
 	},
 	"bot": {"user:read:chat", "user:write:chat", "user:bot"},
 }

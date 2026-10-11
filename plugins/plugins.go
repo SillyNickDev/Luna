@@ -7,9 +7,12 @@ import (
 
 	"luna/bundle"
 	"luna/plugins/avatar"
+	"luna/plugins/games"
 	"luna/plugins/giveaways"
 	"luna/plugins/hrc"
 	"luna/plugins/points"
+	"luna/plugins/polls"
+	"luna/plugins/queue"
 	"luna/plugins/stream"
 )
 
@@ -27,6 +30,9 @@ var All = []Plugin{
 	{[]string{"stream"}, "__stream", stream.Manifest, stream.Main},
 	{[]string{"avatar"}, "__avatar", avatar.Manifest, avatar.Main},
 	{[]string{"hrc", "heartrate"}, "__hrc", hrc.Manifest, hrc.Main},
+	{[]string{"games"}, "__games", games.Manifest, games.Main},
+	{[]string{"polls"}, "__polls", polls.Manifest, polls.Main},
+	{[]string{"queue"}, "__queue", queue.Manifest, queue.Main},
 }
 
 // Find looks a plugin up by install name, with or without the "luna." prefix.

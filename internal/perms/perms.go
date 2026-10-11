@@ -44,6 +44,8 @@ var minRank = map[string]Rank{
 	"mod.shield":              Moderator,
 	"stream.shoutout":         Moderator,
 	"commands.edit":           Moderator,
+	"polls.run":               Moderator,
+	"queue.run":               Moderator,
 	"mod.undo.others":         LunaMod,
 	"filters.edit":            LunaMod,
 	"giveaway.run":            LunaMod,

@@ -12,6 +12,7 @@ package lunatest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -104,6 +105,9 @@ type FakeTwitch struct {
 	Ads        luna.AdSchedule
 	Streams    map[string]luna.LiveStream // by login: who's live
 	Writes     []string                   // "set_channel {...}", "clip", "marker {...}", "raid {...}"
+	NoPolls    bool                       // the channel isn't an affiliate: polls and predictions fail
+	Polls      map[string]*luna.Poll      // by id; set Choices[i].Votes to fake voting
+	Predicts   map[string]*luna.Prediction
 }
 
 func (f *FakeTwitch) Mod(_ context.Context, r *pb.ModRequest) error {
@@ -142,6 +146,49 @@ func (f *FakeTwitch) Lookup(_ context.Context, call, user string, args []byte) (
 		return out, nil
 	case "ads":
 		return f.Ads, nil
+	case "poll", "end_poll", "prediction", "end_prediction":
+		f.Writes = append(f.Writes, strings.TrimSpace(call+" "+string(args)))
+		if f.NoPolls {
+			return nil, errors.New("twitch: 403 The broadcaster must be a partner or affiliate")
+		}
+		var p struct {
+			Title, ID, Status, Winner string
+			Choices                   []string
+		}
+		json.Unmarshal(args, &p)
+		if f.Polls == nil {
+			f.Polls, f.Predicts = map[string]*luna.Poll{}, map[string]*luna.Prediction{}
+		}
+		switch call {
+		case "poll":
+			poll := &luna.Poll{ID: fmt.Sprintf("poll%d", len(f.Polls)+1), Title: p.Title, Status: "ACTIVE"}
+			for i, c := range p.Choices {
+				poll.Choices = append(poll.Choices, luna.Choice{ID: fmt.Sprint(i + 1), Title: c})
+			}
+			f.Polls[poll.ID] = poll
+			return poll, nil
+		case "end_poll":
+			poll := f.Polls[p.ID]
+			if poll == nil {
+				return nil, errors.New("twitch: 404 poll not found")
+			}
+			poll.Status = "TERMINATED"
+			return poll, nil
+		case "prediction":
+			pr := &luna.Prediction{ID: fmt.Sprintf("pred%d", len(f.Predicts)+1), Title: p.Title, Status: "ACTIVE"}
+			for i, c := range p.Choices {
+				pr.Outcomes = append(pr.Outcomes, luna.Choice{ID: fmt.Sprintf("o%d", i+1), Title: c})
+			}
+			f.Predicts[pr.ID] = pr
+			return pr, nil
+		default:
+			pr := f.Predicts[p.ID]
+			if pr == nil {
+				return nil, errors.New("twitch: 404 prediction not found")
+			}
+			pr.Status = p.Status
+			return pr, nil
+		}
 	case "set_channel", "clip", "marker", "snooze", "raid", "unraid":
 		f.Writes = append(f.Writes, strings.TrimSpace(call+" "+string(args)))
 		switch call {

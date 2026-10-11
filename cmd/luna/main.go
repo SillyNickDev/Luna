@@ -38,7 +38,7 @@ const usageText = `usage: luna [--config <dir>] <command>
   config show [key] | get <key> | set <key> <value> | edit | validate
   capsule install [--yes] <folder|file.capsule|name>
                         built in: core (Essentials, Moderation, Events, Shoutouts),
-                        points, giveaways, stream, avatar, hrc
+                        points, giveaways, stream, avatar, hrc, games, polls, queue
   mod timeline | undo <id>
                         moderation actions, with undo (also: luna core --help)
   capsule list | enable | disable | restart | logs | inspect <name>

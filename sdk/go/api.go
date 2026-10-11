@@ -356,6 +356,55 @@ func (t Twitch) Unraid(c *Ctx) error {
 	return err
 }
 
+type Choice struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Votes int    `json:"votes"` // predictions: how many users picked it
+}
+
+type Poll struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Status  string   `json:"status"`
+	Choices []Choice `json:"choices"`
+}
+
+type Prediction struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	Status   string   `json:"status"`
+	Outcomes []Choice `json:"outcomes"`
+}
+
+// StartPoll runs a native Twitch poll (affiliates and partners) for d (15 s to 30 min). Needs "polls".
+func (t Twitch) StartPoll(c *Ctx, title string, choices []string, d time.Duration) (*Poll, error) {
+	var out Poll
+	_, err := t.do(c, "poll", "", map[string]any{"title": title, "choices": choices, "duration_s": int(d.Seconds())}, &out)
+	return &out, err
+}
+
+// EndPoll ends a poll now and returns its votes. Needs "polls".
+func (t Twitch) EndPoll(c *Ctx, id string) (*Poll, error) {
+	var out Poll
+	_, err := t.do(c, "end_poll", "", map[string]any{"id": id}, &out)
+	return &out, err
+}
+
+// StartPrediction opens a native prediction for d (30 s to 30 min). Needs "predictions".
+func (t Twitch) StartPrediction(c *Ctx, title string, outcomes []string, d time.Duration) (*Prediction, error) {
+	var out Prediction
+	_, err := t.do(c, "prediction", "", map[string]any{"title": title, "choices": outcomes, "duration_s": int(d.Seconds())}, &out)
+	return &out, err
+}
+
+// EndPrediction locks ("LOCKED"), resolves ("RESOLVED", with the winning outcome's ID) or
+// cancels ("CANCELED") a prediction. Needs "predictions".
+func (t Twitch) EndPrediction(c *Ctx, id, status, winnerID string) (*Prediction, error) {
+	var out Prediction
+	_, err := t.do(c, "end_prediction", "", map[string]any{"id": id, "status": status, "winner": winnerID}, &out)
+	return &out, err
+}
+
 // Viewers is Luna's shared viewer profile; needs viewers = true.
 type Viewers struct{ b *Bot }
 

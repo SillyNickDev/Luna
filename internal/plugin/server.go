@@ -336,7 +336,8 @@ func (s *server) Mod(ctx context.Context, r *pb.ModRequest) (*pb.Empty, error) {
 var twitchCalls = map[string]string{
 	"user": "read", "follow": "read", "channel": "read", "stream": "read", "categories": "read", "schedule": "read",
 	"streams": "read", "set_channel": "edit", "clip": "clips", "marker": "markers", "ads": "ads", "snooze": "ads",
-	"raid": "raid", "unraid": "raid",
+	"raid": "raid", "unraid": "raid", "poll": "polls", "end_poll": "polls", "prediction": "predictions",
+	"end_prediction": "predictions",
 }
 
 func (s *server) Twitch(ctx context.Context, r *pb.TwitchRequest) (*pb.TwitchReply, error) {
@@ -389,9 +390,11 @@ func (s *server) Twitch(ctx context.Context, r *pb.TwitchRequest) (*pb.TwitchRep
 
 // simulatedWrites stand in for Twitch's answers, so a plugin's flow runs to the end in the simulator.
 var simulatedWrites = map[string]any{
-	"clip":   map[string]string{"id": "simulated", "url": "https://clips.twitch.tv/simulated", "edit_url": ""},
-	"marker": map[string]any{"id": "simulated", "position_s": 0},
-	"snooze": map[string]any{"duration_s": 0, "snooze_count": 0, "preroll_free_s": 0},
+	"clip":       map[string]string{"id": "simulated", "url": "https://clips.twitch.tv/simulated", "edit_url": ""},
+	"marker":     map[string]any{"id": "simulated", "position_s": 0},
+	"snooze":     map[string]any{"duration_s": 0, "snooze_count": 0, "preroll_free_s": 0},
+	"poll":       map[string]any{"id": "simulated", "status": "ACTIVE", "choices": []any{}},
+	"prediction": map[string]any{"id": "simulated", "status": "ACTIVE", "outcomes": []any{}},
 }
 
 func (s *server) Viewer(_ context.Context, r *pb.ViewerRequest) (*pb.ViewerReply, error) {

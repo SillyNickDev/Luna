@@ -65,6 +65,11 @@ func (t *twitchHost) Lookup(ctx context.Context, call, user string, raw []byte) 
 		GameID      string   `json:"game_id"`
 		Description string   `json:"description"`
 		ToID        string   `json:"to_id"`
+		ID          string   `json:"id"`
+		Choices     []string `json:"choices"`
+		DurationS   int      `json:"duration_s"`
+		Status      string   `json:"status"`
+		Winner      string   `json:"winner"`
 	}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &args); err != nil {
@@ -78,6 +83,14 @@ func (t *twitchHost) Lookup(ctx context.Context, call, user string, raw []byte) 
 			return nil, err
 		}
 		return map[string]any{"permanent": until.IsZero(), "until": until}, nil
+	case "poll":
+		return t.bc.StartPoll(ctx, args.Title, args.Choices, args.DurationS)
+	case "end_poll":
+		return t.bc.EndPoll(ctx, args.ID)
+	case "prediction":
+		return t.bc.StartPrediction(ctx, args.Title, args.Choices, args.DurationS)
+	case "end_prediction":
+		return t.bc.EndPrediction(ctx, args.ID, args.Status, args.Winner)
 	case "categories":
 		return t.bc.SearchCategories(ctx, args.Query)
 	case "schedule":

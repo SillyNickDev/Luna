@@ -283,10 +283,11 @@ var (
 	chatPerms = []string{"send", "announce", "whisper"}
 	modPerms  = []string{"timeout", "ban", "delete", "warn", "shield", "shoutout"}
 	// twitchPerms: reading public info, then each kind of change to the channel.
-	twitchPerms = []string{"read", "edit", "clips", "markers", "ads", "raid"}
+	twitchPerms = []string{"read", "edit", "clips", "markers", "ads", "raid", "polls", "predictions"}
 	twitchWords = map[string]string{"read": "reads public Twitch info: users, your channel and stream, who follows",
 		"edit": "changes your stream title and category", "clips": "makes clips of your stream",
-		"markers": "adds VOD markers", "ads": "reads your ad schedule and snoozes ads", "raid": "starts and cancels raids"}
+		"markers": "adds VOD markers", "ads": "reads your ad schedule and snoozes ads", "raid": "starts and cancels raids",
+		"polls": "runs Twitch polls", "predictions": "runs Twitch predictions (viewers bet channel points)"}
 	// modWords say what each [permissions].mod entry lets the plugin do, for approval.
 	modWords = map[string]string{"timeout": "time viewers out", "ban": "ban and unban viewers",
 		"delete": "delete chat messages", "warn": "send Twitch warnings", "shield": "turn Shield Mode on and off",

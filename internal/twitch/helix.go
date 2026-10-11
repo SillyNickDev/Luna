@@ -412,3 +412,125 @@ func (c *Client) Raid(ctx context.Context, toID string) error {
 func (c *Client) Unraid(ctx context.Context) error {
 	return c.helix(ctx, "DELETE", "/raids?"+c.q("broadcaster_id", c.userID), nil, nil)
 }
+
+// ---------- polls and predictions (affiliates and partners only) ----------
+
+type Choice struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Votes int    `json:"votes"`
+}
+
+type Poll struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Status  string   `json:"status"`
+	Choices []Choice `json:"choices"`
+}
+
+type pollReply struct {
+	Data []struct {
+		ID      string `json:"id"`
+		Title   string `json:"title"`
+		Status  string `json:"status"`
+		Choices []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+			Votes int    `json:"votes"`
+		} `json:"choices"`
+	} `json:"data"`
+}
+
+func (r pollReply) poll() (*Poll, error) {
+	if len(r.Data) == 0 {
+		return nil, fmt.Errorf("twitch returned no poll")
+	}
+	d := r.Data[0]
+	p := &Poll{ID: d.ID, Title: d.Title, Status: d.Status}
+	for _, c := range d.Choices {
+		p.Choices = append(p.Choices, Choice(c))
+	}
+	return p, nil
+}
+
+// StartPoll runs a native poll for durationS seconds (15-1800).
+func (c *Client) StartPoll(ctx context.Context, title string, choices []string, durationS int) (*Poll, error) {
+	var cs []map[string]string
+	for _, ch := range choices {
+		cs = append(cs, map[string]string{"title": ch})
+	}
+	var out pollReply
+	if err := c.helix(ctx, "POST", "/polls", map[string]any{"broadcaster_id": c.userID, "title": title, "choices": cs,
+		"duration": durationS}, &out); err != nil {
+		return nil, err
+	}
+	return out.poll()
+}
+
+// EndPoll ends a poll now; the reply has the final votes.
+func (c *Client) EndPoll(ctx context.Context, id string) (*Poll, error) {
+	var out pollReply
+	if err := c.helix(ctx, "PATCH", "/polls", map[string]any{"broadcaster_id": c.userID, "id": id, "status": "TERMINATED"}, &out); err != nil {
+		return nil, err
+	}
+	return out.poll()
+}
+
+type Prediction struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	Status   string   `json:"status"`
+	Outcomes []Choice `json:"outcomes"` // Votes is the number of users who predicted it
+}
+
+type predictionReply struct {
+	Data []struct {
+		ID       string `json:"id"`
+		Title    string `json:"title"`
+		Status   string `json:"status"`
+		Outcomes []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+			Users int    `json:"users"`
+		} `json:"outcomes"`
+	} `json:"data"`
+}
+
+func (r predictionReply) prediction() (*Prediction, error) {
+	if len(r.Data) == 0 {
+		return nil, fmt.Errorf("twitch returned no prediction")
+	}
+	d := r.Data[0]
+	p := &Prediction{ID: d.ID, Title: d.Title, Status: d.Status}
+	for _, o := range d.Outcomes {
+		p.Outcomes = append(p.Outcomes, Choice{ID: o.ID, Title: o.Title, Votes: o.Users})
+	}
+	return p, nil
+}
+
+// StartPrediction opens a prediction for windowS seconds (30-1800).
+func (c *Client) StartPrediction(ctx context.Context, title string, outcomes []string, windowS int) (*Prediction, error) {
+	var os []map[string]string
+	for _, o := range outcomes {
+		os = append(os, map[string]string{"title": o})
+	}
+	var out predictionReply
+	if err := c.helix(ctx, "POST", "/predictions", map[string]any{"broadcaster_id": c.userID, "title": title, "outcomes": os,
+		"prediction_window": windowS}, &out); err != nil {
+		return nil, err
+	}
+	return out.prediction()
+}
+
+// EndPrediction locks (LOCKED), resolves (RESOLVED, with the winning outcome) or cancels (CANCELED) a prediction.
+func (c *Client) EndPrediction(ctx context.Context, id, status, winner string) (*Prediction, error) {
+	body := map[string]any{"broadcaster_id": c.userID, "id": id, "status": status}
+	if winner != "" {
+		body["winning_outcome_id"] = winner
+	}
+	var out predictionReply
+	if err := c.helix(ctx, "PATCH", "/predictions", body, &out); err != nil {
+		return nil, err
+	}
+	return out.prediction()
+}

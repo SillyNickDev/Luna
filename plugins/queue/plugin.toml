@@ -1,0 +1,41 @@
+id = "luna.queue"
+name = "Queue: viewers line up to play with the streamer"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__queue"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+chat = ["send", "whisper"]   # whisper: only for invite_message
+store = true
+
+[cli]
+name = "queue"
+
+[[cli.commands]]
+name = "list"
+summary = "everyone waiting, in order"
+
+[[chat.commands]]
+name = "join"
+
+[[chat.commands]]
+name = "leave"
+
+[[chat.commands]]
+name = "queue"
+cooldown = { global = "5s" }
+
+[[chat.commands]]
+name = "next"
+capability = "queue.run"
+
+[config]
+sub_priority = { type = "bool", default = false }
+group_size = { type = "int", default = 1 }
+rejoin_after_m = { type = "int", default = 30 }   # 0: rejoin right away
+max_size = { type = "int", default = 0 }          # 0: no limit
+invite_message = { type = "str", default = "" }   # e.g. "You're up, {name}! Join me in VRChat: Winterpaw" ("" sends none)

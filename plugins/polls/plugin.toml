@@ -1,0 +1,28 @@
+id = "luna.polls"
+name = "Polls: Twitch polls and predictions, and chat polls"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__polls"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+chat = ["send"]
+twitch = ["polls", "predictions"]
+
+[[chat.commands]]
+name = "poll"
+capability = "polls.run"
+
+[[chat.commands]]
+name = "vote"
+
+[[chat.commands]]
+name = "predict"
+capability = "polls.run"
+
+[config]
+native = { type = "bool", default = true }   # false: always run polls in chat
+default_duration_s = { type = "int", default = 120 }
