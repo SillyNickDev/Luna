@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -304,9 +305,17 @@ func capsuleCmd(p paths, args []string, rt *capsule.Runtime, st *store.Store) (s
 		return "", errors.New("missing subcommand")
 	}
 	if args[0] == "list" {
-		if len(rows) == 0 {
+		asJSON := len(args) > 1 && args[1] == "--json"
+		if len(rows) == 0 && !asJSON {
 			return "no capsules installed", nil
 		}
+		type row struct {
+			ID      string `json:"id"`
+			Version string `json:"version"`
+			State   string `json:"state"`
+			Note    string `json:"note,omitempty"`
+		}
+		list := []row{}
 		var b strings.Builder
 		for _, r := range rows {
 			state, last := "disabled", ""
@@ -321,6 +330,11 @@ func capsuleCmd(p paths, args []string, rt *capsule.Runtime, st *store.Store) (s
 				}
 			}
 			fmt.Fprintf(&b, "%-32s %-10s %-10s %s\n", r.ID, r.Version, state, last)
+			list = append(list, row{r.ID, r.Version, state, last})
+		}
+		if asJSON {
+			out, err := json.Marshal(list)
+			return string(out), err
 		}
 		return strings.TrimSuffix(b.String(), "\n"), nil
 	}

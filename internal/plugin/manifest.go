@@ -94,7 +94,7 @@ var (
 // reserved CLI group names; a plugin can't take them.
 var reserved = []string{"run", "daemon", "start", "stop", "restart", "status", "reload", "update", "version", "setup",
 	"auth", "config", "integrations", "backup", "restore", "export", "events", "sim", "chat", "logs", "mod",
-	"osc", "obs", "capsule", "perms", "plugin", "completion", "help", "viewers"}
+	"osc", "obs", "capsule", "perms", "plugin", "completion", "help", "viewers", "tui"}
 
 // Load reads the host half of dir/plugin.toml. A package with only capsule.toml has no
 // permissions and no commands; it can still run and talk over links.

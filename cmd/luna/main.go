@@ -20,6 +20,7 @@ const usageText = `usage: luna [--config <dir>] <command>
   start | stop | restart
                         control the systemd user service
   status | version      what's running; versions of Luna, the plugin API, capsule spec
+  tui                   the dashboard: status, capsules, events, timeline, chat (mouse works)
   logs [-f] [--capsule <name>]
   events tail [--type twitch.*] [--json] | chat tail
   sim <event> [flags]   fire a simulated event (luna sim --list)
@@ -87,6 +88,8 @@ func main() {
 			err = runDaemon(p)
 		case args[0] == "version":
 			fmt.Println(versionText())
+		case args[0] == "tui":
+			err = runTUI(p)
 		case args[0] == "status":
 			err = call(p, request{Cmd: "status"})
 		case args[0] == "start", args[0] == "stop", args[0] == "restart":
