@@ -371,8 +371,11 @@ func (s *server) Twitch(ctx context.Context, r *pb.TwitchRequest) (*pb.TwitchRep
 		v, err = s.h.Twitch.Lookup(ctx, r.Call, r.User, r.ArgsJson)
 	} else {
 		desc := strings.TrimSpace("twitch " + r.Call + " " + string(r.ArgsJson))
-		fmt.Fprintf(s.p.Log, "luna: %s\n", desc)
 		sim := r.Simulated || s.p.Dev
+		if sim {
+			desc += " (simulated: not sent)"
+		}
+		fmt.Fprintf(s.p.Log, "luna: %s\n", desc)
 		err = s.h.Guard.Mod(ctx, desc, sim, func(ctx context.Context) error {
 			v, err = s.h.Twitch.Lookup(ctx, r.Call, r.User, r.ArgsJson)
 			return err
