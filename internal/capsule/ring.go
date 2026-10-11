@@ -12,6 +12,7 @@ type Ring struct {
 	size    int
 	lines   []string
 	partial string
+	total   int // lines ever written, so a follower can ask for what's new
 }
 
 func NewRing(max int) *Ring { return &Ring{max: max} }
@@ -40,6 +41,7 @@ func (r *Ring) Write(p []byte) (int, error) {
 }
 
 func (r *Ring) add(l string) {
+	r.total++
 	r.lines = append(r.lines, l)
 	r.size += len(l)
 	for r.size > r.max {
@@ -53,4 +55,22 @@ func (r *Ring) Tail(n int) []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.lines[max(0, len(r.lines)-n):]...)
+}
+
+// Since returns lines written after the first n ever written (as far as the ring still
+// holds them) and the new total.
+func (r *Ring) Since(n int) ([]string, int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if n > r.total {
+		n = 0 // a new ring (the capsule restarted): everything is new
+	}
+	start := len(r.lines) - (r.total - n)
+	if start < 0 {
+		start = 0
+	}
+	if start > len(r.lines) {
+		start = len(r.lines)
+	}
+	return append([]string(nil), r.lines[start:]...), r.total
 }

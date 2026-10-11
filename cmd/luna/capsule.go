@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,7 +146,11 @@ func capsuleCLI(p paths, args []string) error {
 		}
 		fmt.Printf("installed %s %s\n", info.Name, info.Version)
 		return nil
-	case "init", "dev", "search", "update":
+	case "init":
+		return capsuleInit(args[1:])
+	case "dev":
+		return capsuleDev(p, args[1:])
+	case "search", "update":
 		return fmt.Errorf("luna capsule %s comes with the SDK and plugin index (Phase 3)", args[0])
 	}
 	return call(p, request{Cmd: "capsule", Args: args})
@@ -294,8 +299,40 @@ func capsuleCmd(p paths, args []string, rt *capsule.Runtime, st *store.Store) (s
 	if len(args) < 2 {
 		return "", fmt.Errorf("usage: luna capsule %s <name>", args[0])
 	}
-	if args[0] == "register" {
+	switch args[0] {
+	case "register":
 		return registerCapsule(p, args[1:], rt, st, rows)
+	case "dev":
+		// The author's own folder, run sandboxed with the permissions it declares; no approval
+		// prompt and no registry entry. Chat stays in the terminal unless "live".
+		if len(args) != 3 {
+			return "", errors.New("usage: dev <hash> sim|live")
+		}
+		u, err := capsule.FromStore(p.capsuleStore(), args[1])
+		if err != nil {
+			return "", err
+		}
+		if args[2] == "live" {
+			devCapsules.Delete(u.Manifest.ID)
+		} else {
+			devCapsules.Store(u.Manifest.ID, true)
+		}
+		c, err := rt.Enable(u, u.Manifest.Links.Uses)
+		if err != nil {
+			return "", err
+		}
+		return waitRunning(c)
+	case "undev":
+		devCapsules.Delete(args[1])
+		rt.Disable(args[1])
+		for _, r := range rows {
+			if r.ID == args[1] && r.Enabled {
+				if u, err := capsule.FromStore(p.capsuleStore(), r.Hash); err == nil {
+					rt.Enable(u, r.Uses)
+				}
+			}
+		}
+		return "", nil
 	}
 	var row *store.CapsuleRow
 	for i, r := range rows {
@@ -311,6 +348,16 @@ func capsuleCmd(p paths, args []string, rt *capsule.Runtime, st *store.Store) (s
 			return "", nil
 		}
 		return row.Approved, nil
+	}
+	if args[0] == "logs" && len(args) == 4 && args[2] == "--after" {
+		// luna capsule dev follows a capsule's log this way, installed or not
+		c := rt.Get(args[1])
+		if c == nil {
+			return "", errors.New(args[1] + " isn't running")
+		}
+		n, _ := strconv.Atoi(args[3])
+		lines, total := c.Logs.Since(n)
+		return strconv.Itoa(total) + "\n" + strings.Join(lines, "\n"), nil
 	}
 	if row == nil {
 		return "", fmt.Errorf("no capsule %q installed (see luna capsule list)", args[1])

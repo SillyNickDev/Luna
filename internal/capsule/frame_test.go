@@ -47,3 +47,18 @@ func FuzzFrame(f *testing.F) {
 		}
 	})
 }
+
+func TestRingSince(t *testing.T) {
+	r := NewRing(20)
+	r.Write([]byte("one\ntwo\nthree\n"))
+	if got, n := r.Since(1); len(got) != 2 || got[0] != "two" || n != 3 {
+		t.Fatalf("since 1: %v %d", got, n)
+	}
+	r.Write([]byte("a-much-longer-line\n")) // pushes old lines out of the 20-byte ring
+	if got, _ := r.Since(0); got[0] == "one" {
+		t.Fatalf("ring kept more than its cap: %v", got)
+	}
+	if got, _ := r.Since(99); len(got) == 0 {
+		t.Fatal("a follower ahead of a new ring should get everything")
+	}
+}
