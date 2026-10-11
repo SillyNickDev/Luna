@@ -29,6 +29,7 @@ import (
 	"luna/internal/config"
 	"luna/internal/event"
 	"luna/internal/guard"
+	"luna/internal/osc"
 	"luna/internal/perms"
 	"luna/internal/plugin"
 	"luna/internal/plugin/pb"
@@ -43,6 +44,7 @@ type Harness struct {
 	m      *plugin.Manifest
 	Store  *store.Store
 	Twitch *FakeTwitch
+	OSC    *FakeOSC
 	Clock  *Clock
 	Events []event.Event // everything the plugin emitted
 
@@ -54,6 +56,7 @@ type Harness struct {
 	streams   int64
 	n         int
 	links     map[string]func(luna.Args) (any, error)
+	hr        *plugin.HR
 }
 
 // Clock is fake time, starting at 2026-01-01 12:00 UTC.
@@ -172,6 +175,50 @@ func (f *FakeTwitch) Lookup(_ context.Context, call, user string, args []byte) (
 	return nil, nil
 }
 
+// FakeOSC records what the plugin sends to VRChat; set Params and Av to fake what VRChat reports.
+type FakeOSC struct {
+	mu        sync.Mutex
+	Sent      []string // "/avatar/parameters/Ears true"
+	Chatboxes []string
+	Params    map[string]any
+	Av        osc.Avatar
+}
+
+func (f *FakeOSC) Send(address string, value any) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Sent = append(f.Sent, fmt.Sprintf("%s %v", address, value))
+	return nil
+}
+
+func (f *FakeOSC) Chatbox(text string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Chatboxes = append(f.Chatboxes, text)
+}
+
+func (f *FakeOSC) Param(name string) (any, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	v, ok := f.Params[name]
+	return v, ok
+}
+
+func (f *FakeOSC) Avatar() osc.Avatar {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.Av
+}
+
+// TakeSent returns what was sent since the last call.
+func (f *FakeOSC) TakeSent() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := f.Sent
+	f.Sent = nil
+	return out
+}
+
 // Mods returns the moderation actions so far, as "timeout fox 60s" style strings.
 func (f *FakeTwitch) Mods() []string {
 	f.mu.Lock()
@@ -221,7 +268,9 @@ func New(tb testing.TB, bot *luna.Bot, dir string, cfg map[string]any) *Harness 
 		return nil
 	}
 	b := bus.New()
-	host := &plugin.Host{Bus: b, Store: st, Guard: g, Twitch: h.Twitch, Publish: func(e event.Event) {
+	h.OSC = &FakeOSC{Params: map[string]any{}}
+	h.hr = &plugin.HR{}
+	host := &plugin.Host{Bus: b, Store: st, Guard: g, Twitch: h.Twitch, OSC: h.OSC, HR: h.hr, Publish: func(e event.Event) {
 		h.mu.Lock()
 		h.Events = append(h.Events, e)
 		h.mu.Unlock()
@@ -307,6 +356,10 @@ func (h *Harness) Emit(typ string, data map[string]any) *luna.Event {
 		h.Twitch.mu.Lock()
 		h.Twitch.Live = luna.Stream{Live: true, StartedAt: h.Clock.Now()}
 		h.Twitch.mu.Unlock()
+	case "hr.update":
+		if bpm, ok := data["bpm"].(int); ok {
+			h.hr.Add(h.Clock.Now(), bpm)
+		}
 	case "twitch.stream.offline":
 		h.stream = 0
 		h.Twitch.mu.Lock()

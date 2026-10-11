@@ -109,6 +109,16 @@ class HostStub:
                 request_serializer=plugin__pb2.EmitRequest.SerializeToString,
                 response_deserializer=plugin__pb2.Empty.FromString,
                 _registered_method=True)
+        self.Osc = channel.unary_unary(
+                '/luna.plugin.v1.Host/Osc',
+                request_serializer=plugin__pb2.OscRequest.SerializeToString,
+                response_deserializer=plugin__pb2.OscReply.FromString,
+                _registered_method=True)
+        self.Hr = channel.unary_unary(
+                '/luna.plugin.v1.Host/Hr',
+                request_serializer=plugin__pb2.HrRequest.SerializeToString,
+                response_deserializer=plugin__pb2.HrReply.FromString,
+                _registered_method=True)
 
 
 class HostServicer:
@@ -152,8 +162,8 @@ class HostServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Twitch(self, request, context):
-        """Twitch reads public channel facts (users, the channel, the stream, follows); needs
-        "read" in [permissions].twitch. Not found answers data_json "null".
+        """Twitch reads public channel facts and, with their own permissions, changes the channel;
+        see TwitchRequest. Not found answers data_json "null".
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -211,6 +221,20 @@ class HostServicer:
 
     def Emit(self, request, context):
         """Emit publishes plugin.<id>.<name> on the bus.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Osc(self, request, context):
+        """Osc talks to VRChat; needs [permissions].osc ("send:<address pattern>", "chatbox", "read").
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Hr(self, request, context):
+        """Hr is the latest heart rate and recent history; needs hr.update in [permissions].events.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -293,6 +317,16 @@ def add_HostServicer_to_server(servicer, server):
                     servicer.Emit,
                     request_deserializer=plugin__pb2.EmitRequest.FromString,
                     response_serializer=plugin__pb2.Empty.SerializeToString,
+            ),
+            'Osc': grpc.unary_unary_rpc_method_handler(
+                    servicer.Osc,
+                    request_deserializer=plugin__pb2.OscRequest.FromString,
+                    response_serializer=plugin__pb2.OscReply.SerializeToString,
+            ),
+            'Hr': grpc.unary_unary_rpc_method_handler(
+                    servicer.Hr,
+                    request_deserializer=plugin__pb2.HrRequest.FromString,
+                    response_serializer=plugin__pb2.HrReply.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -700,6 +734,60 @@ class Host:
             '/luna.plugin.v1.Host/Emit',
             plugin__pb2.EmitRequest.SerializeToString,
             plugin__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Osc(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/Osc',
+            plugin__pb2.OscRequest.SerializeToString,
+            plugin__pb2.OscReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Hr(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/Hr',
+            plugin__pb2.HrRequest.SerializeToString,
+            plugin__pb2.HrReply.FromString,
             options,
             channel_credentials,
             insecure,

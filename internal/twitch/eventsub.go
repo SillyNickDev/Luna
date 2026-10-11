@@ -230,6 +230,7 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 		CategoryName string `json:"category_name"`
 		StartedAt    string `json:"started_at"`
 		DurationS    int    `json:"duration_seconds"`
+		ChatType     string `json:"message_type"` // chat: text, channel_points_highlighted, ...
 		IsAutomatic  bool   `json:"is_automatic"`
 	}
 	if err := json.Unmarshal(raw, &e); err != nil {
@@ -268,7 +269,7 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 		}
 		typ = "twitch.chat.message"
 		data = map[string]any{"user": map[string]any{"id": e.ChatterID, "login": e.ChatterLogin, "name": e.ChatterName, "roles": roles},
-			"text": msg.Text, "message_id": e.MessageID, "emotes": emotes}
+			"text": msg.Text, "message_id": e.MessageID, "emotes": emotes, "highlighted": e.ChatType == "channel_points_highlighted"}
 	case "channel.follow":
 		typ, data = "twitch.channel.follow", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName)}
 	case "channel.subscribe":

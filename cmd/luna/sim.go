@@ -15,7 +15,7 @@ import (
 )
 
 var simList = []struct{ name, typ, usage string }{
-	{"chat", "twitch.chat.message", `[--user x] [--role sub,vip] "text"`},
+	{"chat", "twitch.chat.message", `[--user x] [--role sub,vip] [--highlight] "text"`},
 	{"follow", "twitch.channel.follow", "[--user x]"},
 	{"sub", "twitch.channel.subscribe", "[--user x] [--tier 1|2|3]"},
 	{"cheer", "twitch.channel.cheer", "[--user x] [--bits N]"},
@@ -28,6 +28,8 @@ var simList = []struct{ name, typ, usage string }{
 	{"update", "twitch.channel.update", `"Game" [title]`},
 	{"ad", "twitch.channel.ad_break", "[--seconds N]"},
 	{"hr", "hr.update", "<bpm>"},
+	{"avatar", "osc.avatar", "<avatar id> [name]"},
+	{"param", "osc.param", "<name> <value>"},
 }
 
 // simEvent turns `luna sim` arguments into a simulated event.
@@ -55,6 +57,7 @@ func simEvent(args []string) (event.Event, error) {
 	months := fs.Int("months", 3, "")
 	count := fs.Int("count", 5, "")
 	seconds := fs.Int("seconds", 90, "")
+	highlight := fs.Bool("highlight", false, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return event.Event{}, err
 	}
@@ -72,7 +75,8 @@ func simEvent(args []string) (event.Event, error) {
 		if text == "" || utf8.RuneCountInString(text) > 500 {
 			return event.Event{}, errors.New("chat text must be 1-500 characters")
 		}
-		data = map[string]any{"user": user, "text": text, "message_id": fmt.Sprintf("sim-%d", rand.Int64()), "emotes": 0}
+		data = map[string]any{"user": user, "text": text, "message_id": fmt.Sprintf("sim-%d", rand.Int64()), "emotes": 0,
+			"highlighted": *highlight}
 	case "follow":
 		data = map[string]any{"user": user}
 	case "sub":
@@ -119,6 +123,22 @@ func simEvent(args []string) (event.Event, error) {
 			return event.Event{}, errors.New("--seconds must be 1-180")
 		}
 		data = map[string]any{"duration_s": *seconds, "automatic": false}
+	case "avatar":
+		if len(pos) == 0 {
+			return event.Event{}, errors.New("usage: luna sim avatar <avatar id> [name]")
+		}
+		return event.New(typ, "osc", true, map[string]any{"id": pos[0], "name": strings.Join(pos[1:], " ")})
+	case "param":
+		if len(pos) != 2 {
+			return event.Event{}, errors.New("usage: luna sim param <name> <value>")
+		}
+		var v any = pos[1]
+		if b, err := strconv.ParseBool(pos[1]); err == nil {
+			v = b
+		} else if f, err := strconv.ParseFloat(pos[1], 64); err == nil {
+			v = f
+		}
+		return event.New(typ, "osc", true, map[string]any{"name": pos[0], "value": v})
 	case "hr":
 		bpm, err := strconv.Atoi(strings.Join(pos, ""))
 		if err != nil || bpm < 20 || bpm > 250 {

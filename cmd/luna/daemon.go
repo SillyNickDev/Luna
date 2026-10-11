@@ -94,7 +94,13 @@ func runDaemon(p paths) error {
 
 	g := guard.New(cfg.Get)
 	tw, th := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
-	host := &plugin.Host{Bus: b, Publish: publish, Store: st, Guard: g}
+	host := &plugin.Host{Bus: b, Publish: publish, Store: st, Guard: g, HR: &plugin.HR{}}
+	hrSub := b.Subscribe(64, "hr.update")
+	go feedHR(hrSub, host.HR)
+	oc := startOSC(ctx, cfg.Get(), publish)
+	if oc != nil {
+		host.OSC = oc
+	}
 	if th != nil {
 		host.Twitch = th
 		go func() { // a stream already running when Luna starts counts as online
@@ -144,7 +150,11 @@ func runDaemon(p paths) error {
 		case "configcheck":
 			return checkPluginSetting(caps, req.Args)
 		case "status":
-			return statusText(caps, g.Headroom()), nil
+			return statusText(caps, g.Headroom()) + "\n" + oscState(oc), nil
+		case "osc":
+			return oscCmd(oc, req.Args)
+		case "integrations":
+			return integrationsCmd(oc, req.Args)
 		case "logs":
 			return ringSince(daemonLog, req.Args)
 		case "recent":
@@ -163,6 +173,7 @@ func runDaemon(p paths) error {
 	slog.Info("shutting down")
 	caps.StopAll()
 	chatSub.Close()
+	hrSub.Close()
 	printSub.Close()
 	logSub.Close()
 	<-logged // flush the event log before the database closes

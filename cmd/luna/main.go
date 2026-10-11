@@ -32,9 +32,13 @@ const usageText = `usage: luna [--config <dir>] <command>
   perms show | set <user> <rank> | check <user> <capability>
                         ranks: viewer, moderator, luna-mod, head-mod
   chat say <text>       send a chat message through the output guard
+  integrations list | test osc
+  osc send <address> <value> | params
+                        VRChat: poke a parameter by hand; the current avatar's parameters
   config show [key] | get <key> | set <key> <value> | edit | validate
   capsule install [--yes] <folder|file.capsule|name>
-                        core: Essentials, Moderation, Events, Shoutouts
+                        built in: core (Essentials, Moderation, Events, Shoutouts),
+                        points, giveaways, stream, avatar, hrc
   mod timeline | undo <id>
                         moderation actions, with undo (also: luna core --help)
   capsule list | enable | disable | restart | logs | inspect <name>
@@ -96,7 +100,8 @@ func main() {
 			for _, s := range simList {
 				fmt.Printf("  %-7s %-26s luna sim %s %s\n", s.name, s.typ, s.name, s.usage)
 			}
-		case args[0] == "sim", args[0] == "reload", args[0] == "perms", args[0] == "events":
+		case args[0] == "sim", args[0] == "reload", args[0] == "perms", args[0] == "events", args[0] == "osc",
+			args[0] == "integrations":
 			err = call(p, request{Cmd: args[0], Args: args[1:]})
 		case args[0] == "auth" && len(args) >= 2:
 			err = auth(p, args[1], args[2:])

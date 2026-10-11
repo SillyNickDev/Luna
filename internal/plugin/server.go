@@ -31,6 +31,8 @@ type Host struct {
 	Store   *store.Store
 	Guard   *guard.Guard
 	Twitch  Twitch // nil while Luna runs without Twitch
+	OSC     OSC    // nil while the OSC integration is off
+	HR      *HR
 
 	mu      sync.Mutex
 	plugins map[string]*server

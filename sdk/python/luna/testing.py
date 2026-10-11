@@ -94,6 +94,16 @@ _TWITCH_PERM = {"user": "read", "follow": "read", "channel": "read", "stream": "
                 "ads": "ads", "snooze": "ads", "raid": "raid", "unraid": "raid"}
 
 
+class _OSCFake:
+    """What the plugin sent to VRChat; set params and avatar to fake what VRChat reports."""
+
+    def __init__(self):
+        self.sent = []       # ("/avatar/parameters/Ears", True)
+        self.chatbox = []
+        self.params = {}
+        self.avatar = {"id": "", "name": "", "params": []}
+
+
 class Result:
     def __init__(self, replies):
         self.replies = replies
@@ -145,8 +155,7 @@ class _Fake:
         args = args or {}
         v = None
         if need != "read" and call != "ads":
-            if not simulated:
-                tw.writes.append((call, args))
+            tw.writes.append((call, args))  # recorded even for simulated events, which harness events are by default
             v = {"clip": {"id": "clip1", "url": "https://clips.twitch.tv/clip1", "edit_url": ""},
                  "marker": {"id": "m1", "position_s": 0}, "snooze": tw.ads}.get(call)
         elif call == "categories":
@@ -167,6 +176,34 @@ class _Fake:
         elif call == "follow":
             v = {"followed_at": tw.follows[user]} if user in tw.follows else None
         return json.dumps(v).encode()
+
+    def osc(self, action, address="", value=b"", type="", text="", name="", simulated=False):
+        have = (self.h.perms or {}).get("osc", []) if self.h.perms is not None else None
+        if action == "send":
+            ok = have is None or any(p == "send:" + address or (p.endswith("*") and ("send:" + address).startswith(p[:-1]))
+                                     for p in have)
+            if not ok:
+                raise errors.PermissionDenied(f'add "send:{address}" to [permissions].osc in plugin.toml')
+            self.h.osc.sent.append((address, json.loads(value)))
+            return b""
+        need = "chatbox" if action == "chatbox" else "read"
+        if have is not None and need not in have:
+            raise errors.PermissionDenied(f'add "{need}" to [permissions].osc in plugin.toml')
+        if action == "chatbox":
+            self.h.osc.chatbox.append(text[:144])
+            return b""
+        if action == "param":
+            return json.dumps(self.h.osc.params.get(name)).encode()
+        return json.dumps(self.h.osc.avatar).encode()
+
+    def hr(self, minutes):
+        if self.h.perms is not None and not _allowed(self.h.perms.get("events", []), "hr.update"):
+            raise errors.PermissionDenied('add "hr.update" to [permissions].events in plugin.toml')
+        hist = self.h._hr
+        if not hist:
+            return 0, 0, []
+        cut = hist[-1][0] - minutes * 60000
+        return hist[-1][1], hist[-1][0], [x for x in hist if minutes > 0 and x[0] >= cut]
 
     def viewer(self, user):
         p = self.h.perms
@@ -229,7 +266,8 @@ class _Fake:
 class Harness:
     def __init__(self, plugin, config):
         import asyncio
-        self.chat, self.mod, self.twitch = _Chat(), _Mod(), _Twitch()
+        self.chat, self.mod, self.twitch, self.osc = _Chat(), _Mod(), _Twitch(), _OSCFake()
+        self._hr = []  # (at_ms, bpm), from emitted hr.update events
         self.viewers = {}  # user id → profile dict, for bot.viewers.get
         self.store, self.logs, self.emitted = {}, [], []
         self.clock = Clock()
@@ -275,6 +313,8 @@ class Harness:
         """Fire an event at the plugin. user="fox" is shorthand for a viewer named fox."""
         if isinstance(data.get("user"), str):
             data["user"] = _user(data["user"])
+        if type == "hr.update" and isinstance(data.get("bpm"), int):
+            self._hr = [x for x in self._hr if x[0] >= (self.clock.now - 3600) * 1000] + [(int(self.clock.now * 1000), data["bpm"])]
         ev = Event(self._id("test"), type, "test", self.clock.now, simulated, data)
         bot._dispatch(ev, inline=True)
         return ev

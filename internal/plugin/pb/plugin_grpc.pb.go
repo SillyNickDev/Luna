@@ -38,6 +38,8 @@ const (
 	Host_StoreBatch_FullMethodName  = "/luna.plugin.v1.Host/StoreBatch"
 	Host_Log_FullMethodName         = "/luna.plugin.v1.Host/Log"
 	Host_Emit_FullMethodName        = "/luna.plugin.v1.Host/Emit"
+	Host_Osc_FullMethodName         = "/luna.plugin.v1.Host/Osc"
+	Host_Hr_FullMethodName          = "/luna.plugin.v1.Host/Hr"
 )
 
 // HostClient is the client API for Host service.
@@ -56,8 +58,8 @@ type HostClient interface {
 	ChatSend(ctx context.Context, in *ChatSendRequest, opts ...grpc.CallOption) (*Empty, error)
 	// Mod takes a moderation action as the channel; needs the action in [permissions].mod.
 	Mod(ctx context.Context, in *ModRequest, opts ...grpc.CallOption) (*Empty, error)
-	// Twitch reads public channel facts (users, the channel, the stream, follows); needs
-	// "read" in [permissions].twitch. Not found answers data_json "null".
+	// Twitch reads public channel facts and, with their own permissions, changes the channel;
+	// see TwitchRequest. Not found answers data_json "null".
 	Twitch(ctx context.Context, in *TwitchRequest, opts ...grpc.CallOption) (*TwitchReply, error)
 	// Viewer is Luna's shared profile of a chatter; needs viewers = true.
 	Viewer(ctx context.Context, in *ViewerRequest, opts ...grpc.CallOption) (*ViewerReply, error)
@@ -71,6 +73,10 @@ type HostClient interface {
 	Log(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (*Empty, error)
 	// Emit publishes plugin.<id>.<name> on the bus.
 	Emit(ctx context.Context, in *EmitRequest, opts ...grpc.CallOption) (*Empty, error)
+	// Osc talks to VRChat; needs [permissions].osc ("send:<address pattern>", "chatbox", "read").
+	Osc(ctx context.Context, in *OscRequest, opts ...grpc.CallOption) (*OscReply, error)
+	// Hr is the latest heart rate and recent history; needs hr.update in [permissions].events.
+	Hr(ctx context.Context, in *HrRequest, opts ...grpc.CallOption) (*HrReply, error)
 }
 
 type hostClient struct {
@@ -243,6 +249,26 @@ func (c *hostClient) Emit(ctx context.Context, in *EmitRequest, opts ...grpc.Cal
 	return out, nil
 }
 
+func (c *hostClient) Osc(ctx context.Context, in *OscRequest, opts ...grpc.CallOption) (*OscReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OscReply)
+	err := c.cc.Invoke(ctx, Host_Osc_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostClient) Hr(ctx context.Context, in *HrRequest, opts ...grpc.CallOption) (*HrReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HrReply)
+	err := c.cc.Invoke(ctx, Host_Hr_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HostServer is the server API for Host service.
 // All implementations must embed UnimplementedHostServer
 // for forward compatibility.
@@ -259,8 +285,8 @@ type HostServer interface {
 	ChatSend(context.Context, *ChatSendRequest) (*Empty, error)
 	// Mod takes a moderation action as the channel; needs the action in [permissions].mod.
 	Mod(context.Context, *ModRequest) (*Empty, error)
-	// Twitch reads public channel facts (users, the channel, the stream, follows); needs
-	// "read" in [permissions].twitch. Not found answers data_json "null".
+	// Twitch reads public channel facts and, with their own permissions, changes the channel;
+	// see TwitchRequest. Not found answers data_json "null".
 	Twitch(context.Context, *TwitchRequest) (*TwitchReply, error)
 	// Viewer is Luna's shared profile of a chatter; needs viewers = true.
 	Viewer(context.Context, *ViewerRequest) (*ViewerReply, error)
@@ -274,6 +300,10 @@ type HostServer interface {
 	Log(context.Context, *LogRequest) (*Empty, error)
 	// Emit publishes plugin.<id>.<name> on the bus.
 	Emit(context.Context, *EmitRequest) (*Empty, error)
+	// Osc talks to VRChat; needs [permissions].osc ("send:<address pattern>", "chatbox", "read").
+	Osc(context.Context, *OscRequest) (*OscReply, error)
+	// Hr is the latest heart rate and recent history; needs hr.update in [permissions].events.
+	Hr(context.Context, *HrRequest) (*HrReply, error)
 	mustEmbedUnimplementedHostServer()
 }
 
@@ -328,6 +358,12 @@ func (UnimplementedHostServer) Log(context.Context, *LogRequest) (*Empty, error)
 }
 func (UnimplementedHostServer) Emit(context.Context, *EmitRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Emit not implemented")
+}
+func (UnimplementedHostServer) Osc(context.Context, *OscRequest) (*OscReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Osc not implemented")
+}
+func (UnimplementedHostServer) Hr(context.Context, *HrRequest) (*HrReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Hr not implemented")
 }
 func (UnimplementedHostServer) mustEmbedUnimplementedHostServer() {}
 func (UnimplementedHostServer) testEmbeddedByValue()              {}
@@ -602,6 +638,42 @@ func _Host_Emit_Handler(srv interface{}, ctx context.Context, dec func(interface
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Host_Osc_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OscRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).Osc(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_Osc_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).Osc(ctx, req.(*OscRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Host_Hr_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HrRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).Hr(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_Hr_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).Hr(ctx, req.(*HrRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Host_ServiceDesc is the grpc.ServiceDesc for Host service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -660,6 +732,14 @@ var Host_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Emit",
 			Handler:    _Host_Emit_Handler,
+		},
+		{
+			MethodName: "Osc",
+			Handler:    _Host_Osc_Handler,
+		},
+		{
+			MethodName: "Hr",
+			Handler:    _Host_Hr_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

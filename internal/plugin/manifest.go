@@ -33,6 +33,7 @@ type Manifest struct {
 		Mod     []string `toml:"mod"`
 		Twitch  []string `toml:"twitch"`
 		Viewers bool     `toml:"viewers"`
+		OSC     []string `toml:"osc"` // "send:/avatar/parameters/Ears" (a trailing * matches a prefix), "chatbox", "read"
 	} `toml:"permissions"`
 	CLI struct {
 		Name     string       `toml:"name"`
@@ -79,7 +80,7 @@ func (d *duration) UnmarshalText(b []byte) error {
 
 // Field is one [config] entry.
 type Field struct {
-	Type    string `toml:"type"` // int, float, str, bool
+	Type    string `toml:"type"` // int, float, str, bool, or list (an array of tables, like [[plugins.avatar.redeem]])
 	Default any    `toml:"default"`
 }
 
@@ -147,6 +148,15 @@ func (m *Manifest) validate() error {
 			}
 		}
 	}
+	for _, o := range m.Permissions.OSC {
+		if addr, ok := strings.CutPrefix(o, "send:"); ok {
+			if !oscAddrRe.MatchString(strings.TrimSuffix(addr, "*")) {
+				bad("[permissions].osc: %q must be send:/an/osc/address, optionally ending in *", o)
+			}
+		} else if o != "chatbox" && o != "read" {
+			bad(`[permissions].osc: %q isn't supported (send:<address>, "chatbox" or "read")`, o)
+		}
+	}
 	if m.CLI.Name != "" && (!nameRe.MatchString(m.CLI.Name) || slices.Contains(reserved, m.CLI.Name)) {
 		bad("[cli].name %q must be a short lowercase name and not a built-in command", m.CLI.Name)
 	}
@@ -179,7 +189,7 @@ func (m *Manifest) validate() error {
 	}
 	for k, f := range m.Config {
 		if !nameRe.MatchString(k) || !validType(f.Type) {
-			bad("[config].%s needs a lowercase name and a type of int, float, str or bool", k)
+			bad("[config].%s needs a lowercase name and a type of int, float, str, bool or list", k)
 		} else if _, err := Coerce(f.Type, f.Default); err != nil {
 			bad("[config].%s default: %v", k, err)
 		}
@@ -187,7 +197,9 @@ func (m *Manifest) validate() error {
 	return errors.Join(errs...)
 }
 
-func validType(t string) bool { return t == "int" || t == "float" || t == "str" || t == "bool" }
+func validType(t string) bool {
+	return t == "int" || t == "float" || t == "str" || t == "bool" || t == "list"
+}
 
 // Coerce checks v against a declared type, accepting the forms TOML and JSON give.
 func Coerce(typ string, v any) (any, error) {
@@ -216,6 +228,27 @@ func Coerce(typ string, v any) (any, error) {
 		if b, ok := v.(bool); ok {
 			return b, nil
 		}
+	case "list": // tables only, so each entry is a record the plugin decodes into its own struct
+		var out []any
+		switch l := v.(type) {
+		case []any:
+			out = l
+		case []map[string]any:
+			for _, t := range l {
+				out = append(out, t)
+			}
+		default:
+			return nil, fmt.Errorf("want a list of tables, got %v (%T)", v, v)
+		}
+		for i, t := range out {
+			if _, ok := t.(map[string]any); !ok {
+				return nil, fmt.Errorf("entry %d: want a table, got %v (%T)", i+1, t, t)
+			}
+		}
+		if out == nil {
+			out = []any{}
+		}
+		return out, nil
 	}
 	return nil, fmt.Errorf("want %s, got %v (%T)", typ, v, v)
 }
@@ -260,6 +293,24 @@ var (
 		"shoutout": "send Twitch shoutouts"}
 )
 
+// oscAddrRe is an OSC address with no pattern characters, so permissions and sends are literal.
+var oscAddrRe = regexp.MustCompile(`^(/[A-Za-z0-9_.\-]+)+/?$`)
+
+// AllowsOSCSend reports whether [permissions].osc lets the plugin send to address.
+func (m *Manifest) AllowsOSCSend(address string) bool {
+	if !oscAddrRe.MatchString(address) || strings.HasSuffix(address, "/") ||
+		slices.ContainsFunc(strings.Split(address, "/"), func(seg string) bool { return seg == "." || seg == ".." }) {
+		return false // no dot segments, so a prefix permission can't be stepped out of
+	}
+	for _, o := range m.Permissions.OSC {
+		p, ok := strings.CutPrefix(o, "send:")
+		if ok && (p == address || strings.HasSuffix(p, "*") && strings.HasPrefix(address, strings.TrimSuffix(p, "*"))) {
+			return true
+		}
+	}
+	return false
+}
+
 // AllowsEvents reports whether pattern is within [permissions].events.
 func (m *Manifest) AllowsEvents(pattern string) bool {
 	for _, p := range m.Permissions.Events {
@@ -290,6 +341,16 @@ func (m *Manifest) Describe() string {
 	}
 	for _, p := range m.Permissions.Twitch {
 		fmt.Fprintf(&b, "  %s\n", twitchWords[p])
+	}
+	for _, o := range m.Permissions.OSC {
+		switch {
+		case o == "chatbox":
+			b.WriteString("  writes in your VRChat chatbox\n")
+		case o == "read":
+			b.WriteString("  sees your VRChat avatar and its parameters\n")
+		default:
+			fmt.Fprintf(&b, "  sets VRChat avatar parameters: %s\n", strings.TrimPrefix(o, "send:"))
+		}
 	}
 	if m.Permissions.Viewers {
 		b.WriteString("  reads viewer profiles: first and last seen, messages, watch time, streaks\n")

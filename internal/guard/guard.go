@@ -57,6 +57,16 @@ func (g *Guard) Chat(ctx context.Context, text string, simulated bool) error {
 	return g.Send(ctx, Msg{Text: text, Simulated: simulated})
 }
 
+// Blocked reports whether text matches the chat.blocklist; the VRChat chatbox uses it too.
+func (g *Guard) Blocked(text string) bool {
+	for _, re := range g.cfg().Chat.Patterns {
+		if re.MatchString(text) {
+			return true
+		}
+	}
+	return false
+}
+
 // Send is Chat for any kind of message: a reply, an announcement or a whisper.
 func (g *Guard) Send(ctx context.Context, m Msg) error {
 	c := g.cfg()
@@ -65,10 +75,8 @@ func (g *Guard) Send(ctx context.Context, m Msg) error {
 	if text == "" {
 		return errors.New("empty message")
 	}
-	for _, re := range c.Chat.Patterns {
-		if re.MatchString(text) {
-			return ErrBlocked
-		}
+	if g.Blocked(text) {
+		return ErrBlocked
 	}
 	if m.Simulated {
 		return g.Sim(ctx, m)

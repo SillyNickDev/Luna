@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,6 +32,13 @@ type Config struct {
 	Perms struct {
 		SameRankOverride map[string]bool `toml:"same_rank_override"`
 	} `toml:"perms"`
+	OSC struct {
+		Enabled     bool   `toml:"enabled"`
+		Send        string `toml:"send"`       // VRChat's input port
+		Listen      string `toml:"listen"`     // VRChat's output port
+		ConfigDir   string `toml:"config_dir"` // VRChat's OSC folder, for avatar parameters; found by itself under Proton or Windows
+		AllowRemote bool   `toml:"allow_remote"`
+	} `toml:"osc"`
 	MemoryLimitMiB int `toml:"memory_limit_mib"`
 	// Plugins holds each plugin's settings, keyed by its CLI name, the last part of its ID,
 	// or its full ID. They're checked against the plugin's [config] schema when it starts.
@@ -41,6 +49,7 @@ func Default() *Config {
 	c := &Config{MemoryLimitMiB: 48}
 	c.Twitch.ClientID = "9ye8kbj2uo87wxll4l9qsuoowt7yub"
 	c.Chat.RateLimit = 20
+	c.OSC.Send, c.OSC.Listen = "127.0.0.1:9000", "127.0.0.1:9001"
 	return c
 }
 
@@ -70,6 +79,15 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("perms.same_rank_override: %w", err))
 		}
 	}
+	for _, a := range []struct{ key, addr string }{{"osc.send", c.OSC.Send}, {"osc.listen", c.OSC.Listen}} {
+		host, _, err := net.SplitHostPort(a.addr)
+		if err != nil && (a.addr != "" || a.key == "osc.send") {
+			errs = append(errs, fmt.Errorf("%s: want host:port, got %q", a.key, a.addr))
+		} else if ip := net.ParseIP(host); a.addr != "" && !c.OSC.AllowRemote && host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			// OSC is plain UDP with no authentication: anyone on the path can read or forge it.
+			errs = append(errs, fmt.Errorf("%s: %s isn't this machine; OSC has no encryption, so set osc.allow_remote = true to accept that", a.key, a.addr))
+		}
+	}
 	if c.MemoryLimitMiB < 16 {
 		errs = append(errs, fmt.Errorf("memory_limit_mib must be at least 16, got %d", c.MemoryLimitMiB))
 	}
@@ -93,8 +111,14 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	if und := md.Undecoded(); len(und) > 0 {
-		return nil, fmt.Errorf("unknown keys in %s: %v", path, und)
+	var unknown []toml.Key
+	for _, k := range md.Undecoded() {
+		if k[0] != "plugins" { // tables inside plugin settings ([[plugins.avatar.redeem]]) are checked by the plugin's schema
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("unknown keys in %s: %v", path, unknown)
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err

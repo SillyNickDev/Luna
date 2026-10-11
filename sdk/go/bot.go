@@ -234,6 +234,8 @@ type Bot struct {
 	Log     Log
 	Timers  Timers
 	Links   Links
+	OSC     OSC
+	HR      HR
 
 	CrashOnError bool   // tests: a handler error panics instead of being logged
 	ID           string // set once connected
@@ -264,7 +266,7 @@ func New() *Bot {
 	b := &Bot{cli: map[string]*cliCmd{}, chat: map[string]*chatCmd{}, now: time.Now, ctx: context.Background(),
 		wake: make(chan struct{}, 1), provides: map[string]provider{}}
 	b.Chat, b.Mod, b.Store, b.Twitch, b.Viewers, b.Log, b.Timers = Chat{b}, Mod{b}, Store{b}, Twitch{b}, Viewers{b}, Log{b}, Timers{b}
-	b.Links = Links{b}
+	b.Links, b.OSC, b.HR = Links{b}, OSC{b}, HR{b}
 	b.linkCall = (&liveLinks{conns: map[string]linkConn{}}).call
 	return b
 }
@@ -322,7 +324,7 @@ func (b *Bot) Emit(c *Ctx, name string, data any) error {
 }
 
 var configTypes = map[reflect.Kind]string{reflect.Int: "int", reflect.Int64: "int", reflect.Float64: "float",
-	reflect.String: "str", reflect.Bool: "bool"}
+	reflect.String: "str", reflect.Bool: "bool", reflect.Slice: "list"}
 
 func configSchema(cfg any) (map[string]map[string]any, error) {
 	v := reflect.ValueOf(cfg)
@@ -338,10 +340,17 @@ func configSchema(cfg any) (map[string]map[string]any, error) {
 			continue
 		}
 		typ, ok := configTypes[f.Type.Kind()]
-		if !ok {
-			return nil, fmt.Errorf("luna: config field %s is a %s; use int, float64, string or bool", f.Name, f.Type)
+		if ok && typ == "list" && f.Type.Elem().Kind() != reflect.Struct {
+			ok = false
 		}
-		out[name] = map[string]any{"type": typ, "default": v.Field(i).Interface()}
+		if !ok {
+			return nil, fmt.Errorf("luna: config field %s is a %s; use int, float64, string, bool or a slice of structs", f.Name, f.Type)
+		}
+		def := v.Field(i).Interface()
+		if typ == "list" && v.Field(i).Len() == 0 {
+			def = []any{}
+		}
+		out[name] = map[string]any{"type": typ, "default": def}
 	}
 	return out, nil
 }

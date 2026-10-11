@@ -12,6 +12,7 @@ import (
 
 	"luna/internal/capsule"
 	"luna/internal/capsule/sandbox"
+	"luna/internal/osc"
 	"luna/internal/secrets"
 	"luna/internal/twitch"
 )
@@ -42,10 +43,7 @@ var setupSteps = []struct {
 	{"twitch", "Twitch broadcaster account", setupTwitch},
 	{"bot", "Bot account", setupBot},
 	{"runtime", "Python runtime for plugins", setupRuntime},
-	{"integrations", "Integrations (OBS, VRChat, HRCollect)", func(paths, bool) error {
-		fmt.Println("  not available yet; they arrive with the launch plugins (Phase 5)")
-		return nil
-	}},
+	{"integrations", "Integrations (VRChat, HRCollect)", setupIntegrations},
 	{"service", "Run Luna as a systemd user service", setupService},
 	{"core", "Core bundle: Essentials, Moderation, Events, Shoutouts", setupCore},
 	{"smoke", "Smoke test", setupSmoke},
@@ -243,5 +241,25 @@ func setupSmoke(p paths, _ bool) error {
 		fmt.Print("  ", l)
 	}
 	fmt.Println()
+	return nil
+}
+
+// setupIntegrations turns on VRChat's OSC with the default ports, the ones VRChat uses
+// unless launched with --osc. shortcut: no port prompt; edit [osc] in luna.toml for others.
+func setupIntegrations(p paths, explicit bool) error {
+	if !ask("  Use VRChat (OSC) for avatar effects and the chatbox?", false) {
+		fmt.Println("  skipped; later: luna setup integrations")
+	} else {
+		for _, kv := range [][2]string{{"osc.enabled", "true"}, {"osc.send", "127.0.0.1:9000"}, {"osc.listen", "127.0.0.1:9001"}} {
+			if err := configSet(p.config, kv[0], kv[1]); err != nil {
+				return err
+			}
+		}
+		if osc.DefaultConfigDir() == "" {
+			fmt.Println("  VRChat's OSC folder wasn't found, so avatar parameters can't be listed; set osc.config_dir to it")
+		}
+		fmt.Println("  OSC on. In VRChat turn it on too (action menu → Options → OSC → Enabled), restart luna, then: luna integrations test osc")
+	}
+	fmt.Println("  HRCollect: not built in yet; the heart rate plugin works with luna sim hr <bpm> meanwhile")
 	return nil
 }

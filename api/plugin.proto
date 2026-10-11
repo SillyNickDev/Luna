@@ -21,8 +21,8 @@ service Host {
   rpc ChatSend(ChatSendRequest) returns (Empty);
   // Mod takes a moderation action as the channel; needs the action in [permissions].mod.
   rpc Mod(ModRequest) returns (Empty);
-  // Twitch reads public channel facts (users, the channel, the stream, follows); needs
-  // "read" in [permissions].twitch. Not found answers data_json "null".
+  // Twitch reads public channel facts and, with their own permissions, changes the channel;
+  // see TwitchRequest. Not found answers data_json "null".
   rpc Twitch(TwitchRequest) returns (TwitchReply);
   // Viewer is Luna's shared profile of a chatter; needs viewers = true.
   rpc Viewer(ViewerRequest) returns (ViewerReply);
@@ -36,6 +36,10 @@ service Host {
   rpc Log(LogRequest) returns (Empty);
   // Emit publishes plugin.<id>.<name> on the bus.
   rpc Emit(EmitRequest) returns (Empty);
+  // Osc talks to VRChat; needs [permissions].osc ("send:<address pattern>", "chatbox", "read").
+  rpc Osc(OscRequest) returns (OscReply);
+  // Hr is the latest heart rate and recent history; needs hr.update in [permissions].events.
+  rpc Hr(HrRequest) returns (HrReply);
 }
 
 message Empty {}
@@ -165,4 +169,33 @@ message LogRequest {
 message EmitRequest {
   string name = 1;
   bytes data_json = 2;
+}
+
+message OscRequest {
+  string action = 1;    // send, chatbox, param, avatar
+  string address = 2;   // send: e.g. /avatar/parameters/Ears
+  bytes value_json = 3; // send: true, 3, 0.5 or "text"
+  string type = 4;      // send: bool, int, float or string; empty guesses from the avatar, then the value
+  string text = 5;      // chatbox
+  string name = 6;      // param
+  bool simulated = 7;   // answering a simulated event: printed, never sent
+}
+
+message OscReply {
+  bytes data_json = 1; // param: the value or null; avatar: {id, name, params}
+}
+
+message HrRequest {
+  int32 minutes = 1; // history to return, up to 60
+}
+
+message HrReply {
+  int32 bpm = 1;  // 0 before the first reading
+  int64 at_ms = 2;
+  repeated HrSample history = 3;
+}
+
+message HrSample {
+  int64 at_ms = 1;
+  int32 bpm = 2;
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -57,5 +58,29 @@ func TestWatch(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("no reload after the file changed")
+	}
+}
+
+func TestOSCStaysLocal(t *testing.T) {
+	for addr, ok := range map[string]bool{"127.0.0.1:9000": true, "localhost:9000": true, "[::1]:9000": true,
+		"192.168.1.20:9000": false, "vrchat.example:9000": false, "9000": false} {
+		c := Default()
+		c.OSC.Send = addr
+		if err := c.Validate(); (err == nil) != ok {
+			t.Errorf("osc.send = %q: %v", addr, err)
+		}
+	}
+	c := Default()
+	c.OSC.Send, c.OSC.AllowRemote = "192.168.1.20:9000", true
+	if err := c.Validate(); err != nil {
+		t.Errorf("allow_remote: %v", err)
+	}
+}
+
+func TestPluginTablesLoad(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "luna.toml")
+	os.WriteFile(path, []byte("[[plugins.avatar.redeem]]\nreward = \"Toggle ears\"\nparam = \"Ears\"\n\n[chat]\nrate_limt = 5\n"), 0o644)
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "rate_limt") || strings.Contains(err.Error(), "reward") {
+		t.Fatalf("want only the typo reported: %v", err)
 	}
 }

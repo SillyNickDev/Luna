@@ -156,6 +156,10 @@ def _type_name(hint):
 
 
 def _check(spec_type, k, v):
+    if spec_type == "list":  # a list of tables, like [[plugins.avatar.redeem]]: entries read as objects
+        if not isinstance(v, list) or not all(isinstance(t, dict) for t in v):
+            raise errors.ConfigError(f"{k}: expected a list of tables, got {v!r}")
+        return [Obj(t) for t in v]
     want = {"int": int, "float": (int, float), "str": str, "bool": bool}[spec_type]
     if not isinstance(v, want) or (spec_type == "int" and isinstance(v, bool)):
         raise errors.ConfigError(f"{k}: expected {spec_type}, got {v!r}")
@@ -173,7 +177,8 @@ class Config:
                 continue
             if not hasattr(cls, k):
                 raise errors.ConfigError(f"config field {k} needs a default")
-            out[k] = {"type": _type_name(hint)[0], "default": getattr(cls, k)}
+            typ = "list" if hint is list or typing.get_origin(hint) is list else _type_name(hint)[0]
+            out[k] = {"type": typ, "default": getattr(cls, k)}
         return out
 
     @classmethod
@@ -328,6 +333,59 @@ class _Twitch:
     def unraid(self):
         """Cancel a pending raid. Needs "raid"."""
         self._get("unraid")
+
+
+def _simulated():
+    ev = _current.get()
+    return bool(ev and ev.simulated)
+
+
+class _OSC:
+    """VRChat over OSC; needs [permissions].osc ("send:<address>", "chatbox", "read")."""
+
+    def __init__(self, bot):
+        self._bot = bot
+
+    def send(self, address, value):
+        """Set an OSC address to a bool, int, float or str. Only the latest value per address
+        goes out each 1/30 s."""
+        typ = next((n for t, n in ((bool, "bool"), (int, "int"), (float, "float"), (str, "string"))
+                    if isinstance(value, t)), None)
+        if typ is None:
+            raise TypeError(f"OSC can't send a {type(value).__name__}")
+        self._bot._t.osc("send", address=address, value=json.dumps(value).encode(), type=typ, simulated=_simulated())
+
+    def set_param(self, name, value):
+        """send() to /avatar/parameters/<name>."""
+        self.send("/avatar/parameters/" + name, value)
+
+    def chatbox(self, text):
+        """Show text in the VRChat chatbox (144 characters; rate-limited, latest wins)."""
+        self._bot._t.osc("chatbox", text=str(text), simulated=_simulated())
+
+    def param(self, name):
+        """VRChat's last reported value of an avatar parameter, or None."""
+        return json.loads(self._bot._t.osc("param", name=name) or b"null")
+
+    def avatar(self):
+        """The avatar being worn: id, name, params [{name, type, writable}]."""
+        return Obj(json.loads(self._bot._t.osc("avatar") or b"{}"))
+
+
+class _HR:
+    """The streamer's heart rate; needs hr.update in [permissions].events."""
+
+    def __init__(self, bot):
+        self._bot = bot
+
+    @property
+    def bpm(self):
+        """The latest reading; 0 before the first."""
+        return self._bot._t.hr(0)[0]
+
+    def history(self, minutes):
+        """Readings from the last minutes (up to 60), oldest first: [Obj(at, bpm)]."""
+        return [Obj({"at": at / 1000, "bpm": b}) for at, b in self._bot._t.hr(minutes)[2]]
 
 
 class _Viewers:
@@ -652,6 +710,8 @@ class Bot:
         self.store = _Store(self)
         self.twitch = _Twitch(self)
         self.viewers = _Viewers(self)
+        self.osc = _OSC(self)
+        self.hr = _HR(self)
         self.log = _Log(self)
         self.timers = _Timers(self)
         self.links = _Links(self)

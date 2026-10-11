@@ -97,6 +97,14 @@ class Transport:
         return self._rpc(self.stub.Twitch, pb.TwitchRequest(call=call, user=user, simulated=simulated,
                                                             args_json=json.dumps(args).encode() if args else b"")).data_json
 
+    def osc(self, action, address="", value=b"", type="", text="", name="", simulated=False):
+        return self._rpc(self.stub.Osc, pb.OscRequest(action=action, address=address, value_json=value, type=type,
+                                                      text=text, name=name, simulated=simulated)).data_json
+
+    def hr(self, minutes):
+        r = self._rpc(self.stub.Hr, pb.HrRequest(minutes=minutes))
+        return r.bpm, r.at_ms, [(s.at_ms, s.bpm) for s in r.history]
+
     def viewer(self, user):
         return self._rpc(self.stub.Viewer, pb.ViewerRequest(user=user)).data_json
 

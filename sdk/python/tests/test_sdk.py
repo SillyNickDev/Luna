@@ -117,6 +117,30 @@ class SDKTest(unittest.TestCase):
         main.bot.twitch.set_channel(title="New title")
         self.assertEqual(t.twitch.writes, [("clip", {}), ("set_channel", {"title": "New title", "game_id": ""})])
 
+    def test_osc_hr_and_list_config(self):
+        from luna import Config
+        t = harness(main)
+        t.emit("hr.update", bpm=88)
+        t.clock.advance("1m")
+        t.emit("hr.update", bpm=91)
+        self.assertEqual(main.bot.hr.bpm, 91)
+        self.assertEqual([s.bpm for s in main.bot.hr.history(5)], [88, 91])
+        with self.assertRaises(PermissionDenied):
+            main.bot.osc.set_param("Ears", True)  # the example asks for no osc
+        t.perms = dict(t.perms, osc=["send:/avatar/parameters/E*", "read"])
+        main.bot.osc.set_param("Ears", True)
+        self.assertEqual(t.osc.sent, [("/avatar/parameters/Ears", True)])
+        t.osc.params["Ears"] = True
+        self.assertIs(main.bot.osc.param("Ears"), True)
+        with self.assertRaises(PermissionDenied):
+            main.bot.osc.chatbox("hi")
+
+        class S(Config):
+            redeem: list = []
+        cfg = S._load({"redeem": [{"reward": "Toggle ears", "param": "Ears"}]})
+        self.assertEqual(cfg.redeem[0].param, "Ears")
+        self.assertEqual(S._schema()["redeem"]["type"], "list")
+
     def test_mod_permission(self):
         t = harness(main)
         t.perms = dict(t.perms, mod=[])
