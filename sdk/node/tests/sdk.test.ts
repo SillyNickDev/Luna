@@ -59,6 +59,16 @@ test("permissions from plugin.toml", async () => {
   await assert.rejects(bot.store.get("x"), /store = true/);
 });
 
+test("http through the allowlist", async () => {
+  const t = await harness();
+  await assert.rejects(bot.http.get("https://api.example.com/x"), /"api.example.com:443" to \[capsule\].net/);
+  t.net = ["api.example.com:443"];
+  t.http.mock("api.example.com", { json: { ok: 1 } });
+  const r = await bot.http.post("https://api.example.com/x", { json: { a: 1 } });
+  assert.deepEqual([r.status, r.json()], [200, { ok: 1 }]);
+  assert.deepEqual(t.http.requests, [["POST", "https://api.example.com/x", '{"a":1}']]);
+});
+
 test("describe matches what luna capsule dev expects", () => {
   const d = bot.describe();
   assert.deepEqual(d.events, ["hr.update", "twitch.channel.follow", "twitch.channel.redeem"]);

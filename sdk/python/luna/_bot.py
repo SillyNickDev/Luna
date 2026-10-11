@@ -372,6 +372,47 @@ class _OSC:
         return Obj(json.loads(self._bot._t.osc("avatar") or b"{}"))
 
 
+_json = json  # request() takes a json= argument, which hides the module
+
+
+class Response:
+    """An HTTP response: status, headers (lowercase names), body (bytes), .text, .json()."""
+
+    def __init__(self, status, headers, body):
+        self.status, self.headers, self.body = status, headers, body
+
+    @property
+    def text(self):
+        return self.body.decode("utf-8", "replace")
+
+    def json(self):
+        return json.loads(self.body)
+
+
+class _HTTP:
+    """HTTPS to the hosts in [capsule].net, through Luna's egress proxy."""
+
+    def __init__(self, bot):
+        self._bot = bot
+
+    def request(self, method, url, *, json=None, data=None, headers=None, timeout=30):
+        h = {k.lower(): v for k, v in (headers or {}).items()}
+        body = data
+        if json is not None:
+            body = _json.dumps(json).encode()
+            h.setdefault("content-type", "application/json")
+        if isinstance(body, str):
+            body = body.encode()
+        status, rh, rb = self._bot._t.http(method.upper(), url, h, body, timeout)
+        return Response(status, rh, rb)
+
+    def get(self, url, **kw):
+        return self.request("GET", url, **kw)
+
+    def post(self, url, **kw):
+        return self.request("POST", url, **kw)
+
+
 class _HR:
     """The streamer's heart rate; needs hr.update in [permissions].events."""
 
@@ -712,6 +753,7 @@ class Bot:
         self.viewers = _Viewers(self)
         self.osc = _OSC(self)
         self.hr = _HR(self)
+        self.http = _HTTP(self)
         self.log = _Log(self)
         self.timers = _Timers(self)
         self.links = _Links(self)

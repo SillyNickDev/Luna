@@ -111,6 +111,9 @@ func pluginCLI(ctx context.Context, rt *capsule.Runtime, host *plugin.Host, args
 	r, err := host.Invoke(ctx, c.ID, &pb.Command{Kind: "cli", Name: cmd.Name, ArgsJson: raw})
 	if errors.Is(err, plugin.ErrNotRunning) {
 		msg := c.ID + " isn't running (" + c.State() + ")"
+		if c.State() == capsule.Running {
+			msg = c.ID + " is still starting; try again in a moment"
+		}
 		if h := c.History(); len(h) > 0 {
 			msg += "; last failure: " + h[len(h)-1].Cause
 		}

@@ -1,6 +1,8 @@
 // The capsule side of a live plugin: the runtime's control channel (Capsules spec) and
 // the plugin API over gRPC.
+import https from "node:https";
 import net from "node:net";
+import tls from "node:tls";
 import path from "node:path";
 import { decode as cborDecode, encode as cborEncode } from "./cbor.ts";
 import { Client, Code, GrpcError } from "./grpc.ts";
@@ -141,6 +143,51 @@ class Live implements Transport {
   async hr(minutes: number) {
     const r = await this.call("Hr", "HrRequest", "HrReply", { minutes });
     return { bpm: r.bpm, atMs: r.at_ms, history: r.history.map((s: Json) => ({ atMs: s.at_ms, bpm: s.bpm })) };
+  }
+
+  // HTTPS through the egress proxy: CONNECT on the capsule's socket, then TLS to the host.
+  async http(method: string, url: string, headers: Record<string, string>, body: Uint8Array | undefined, timeoutMs: number) {
+    const u = new URL(url);
+    if (u.protocol !== "https:") throw new LunaError("bot.http is HTTPS only");
+    const sock = process.env.CAPSULE_EGRESS;
+    if (!sock) throw new PermissionDenied('no network: list the hosts this plugin needs in [capsule].net, like "api.example.com:443"');
+    const target = `${u.hostname}:${u.port || 443}`;
+    const raw = await new Promise<net.Socket>((resolve, reject) => {
+      const s = net.connect(sock);
+      let head = Buffer.alloc(0);
+      s.once("error", reject);
+      s.once("connect", () => s.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`));
+      const onData = (c: Buffer) => {
+        head = Buffer.concat([head, c]);
+        const end = head.indexOf("\r\n\r\n");
+        if (end < 0) return;
+        s.off("data", onData);
+        const status = head.subarray(0, head.indexOf("\r\n")).toString().split(" ")[1];
+        if (status !== "200") {
+          s.destroy();
+          const why = head.subarray(end + 4).toString().trim() || head.toString().trim();
+          return reject(status === "403" ? new PermissionDenied(`${target}: ${why}`) : new LunaError(`${target}: ${why}`));
+        }
+        resolve(s); // a proxy sends nothing after 200 until the client speaks, so no bytes are lost
+      };
+      s.on("data", onData);
+    });
+    return new Promise<{ status: number; headers: Record<string, string>; body: Uint8Array }>((resolve, reject) => {
+      const agent = new https.Agent({ keepAlive: false });
+      agent.createConnection = () => tls.connect({ socket: raw, servername: u.hostname }); // the tunnel, never a DNS lookup
+      const req = https.request(url, { method, headers, timeout: timeoutMs, agent }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const h: Record<string, string> = {};
+          for (const [k, v] of Object.entries(res.headers)) h[k] = Array.isArray(v) ? v.join(", ") : String(v ?? "");
+          resolve({ status: res.statusCode ?? 0, headers: h, body: Buffer.concat(chunks) });
+        });
+      });
+      req.on("timeout", () => req.destroy(new Timeout(`${url}: no answer in ${timeoutMs} ms`)));
+      req.on("error", reject);
+      req.end(body);
+    });
   }
 
   // A link is one connection, one call at a time, through the runtime's broker.

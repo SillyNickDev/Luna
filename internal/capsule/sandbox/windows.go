@@ -417,7 +417,7 @@ func Doctor() []Check {
 		{"child processes", "blocked: capsules can't start programs", true},
 		{"other processes", "can't open, signal or debug them, but can list their names (Windows can't hide them)", false},
 		{"open files cap", "not enforced on Windows", false},
-		{"network allowlists", "not implemented yet; capsules asking for network are refused", false},
+		{"network allowlists", "only the hosts a capsule lists, through Luna's egress proxy; no private addresses", true},
 		{"data quota", "not enforced on Windows yet", false},
 	}
 }

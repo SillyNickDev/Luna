@@ -253,7 +253,7 @@ func Doctor() []Check {
 	default:
 		add("cgroup limits", true, "hard memory, CPU and process caps via systemd scopes")
 	}
-	add("network allowlists", false, "not implemented yet; capsules asking for network are refused")
+	add("network allowlists", true, "only the hosts a capsule lists, through Luna's egress proxy; no private addresses")
 	add("data quota", false, "per-file size cap only, not a total quota")
 	return out
 }

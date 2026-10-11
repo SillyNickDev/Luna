@@ -8,6 +8,10 @@ import struct
 import sys
 import threading
 
+import http.client
+import ssl
+import urllib.parse
+
 import grpc
 
 from . import _cbor, errors
@@ -64,6 +68,33 @@ def _err(e):
     if code == grpc.StatusCode.DEADLINE_EXCEEDED:
         return errors.Timeout(msg)
     return errors.LunaError(msg)
+
+
+class _EgressHTTPS(http.client.HTTPSConnection):
+    """HTTPS whose TCP connection is a tunnel through the capsule's egress proxy."""
+
+    def connect(self):
+        path = os.environ.get("CAPSULE_EGRESS")
+        if not path:
+            raise errors.PermissionDenied('no network: list the hosts this plugin needs in [capsule].net, like "api.example.com:443"')
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(self.timeout)
+        s.connect(path)
+        target = f"{self.host}:{self.port}"
+        s.sendall(f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n".encode())
+        head = b""
+        while b"\r\n\r\n" not in head and len(head) < 8192:
+            b = s.recv(1)  # one byte at a time: nothing past the header may be consumed
+            if not b:
+                break
+            head += b
+        status = head.split(b" ", 2)
+        if len(status) < 2 or status[1] != b"200":
+            rest = s.recv(1024)
+            s.close()
+            why = rest.decode("utf-8", "replace").strip() or head.decode("utf-8", "replace").strip()
+            raise (errors.PermissionDenied if status[1:2] == [b"403"] else errors.LunaError)(f"{target}: {why}")
+        self.sock = ssl.create_default_context().wrap_socket(s, server_hostname=self.host)
 
 
 class Transport:
@@ -136,6 +167,18 @@ class Transport:
 
     def emit(self, name, data):
         self._rpc(self.stub.Emit, pb.EmitRequest(name=name, data_json=data))
+
+    def http(self, method, url, headers, body, timeout):
+        u = urllib.parse.urlsplit(url)
+        if u.scheme != "https":
+            raise errors.LunaError("bot.http is HTTPS only")
+        c = _EgressHTTPS(u.hostname, u.port or 443, timeout=timeout)
+        try:
+            c.request(method, (u.path or "/") + (f"?{u.query}" if u.query else ""), body=body, headers=headers)
+            r = c.getresponse()
+            return r.status, {k.lower(): v for k, v in r.getheaders()}, r.read(16 << 20)
+        finally:
+            c.close()
 
     def link_call(self, use, method, kwargs):
         with self.links_lock:

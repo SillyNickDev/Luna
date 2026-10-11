@@ -58,6 +58,16 @@ export class Harness {
   store = new Map<string, { v: Json; exp: number }>();
   osc = { sent: [] as [string, Json][], chatbox: [] as string[], params: {} as Record<string, Json>,
     avatar: { id: "", name: "", params: [] } as Json };
+  /** Fake HTTPS: t.http.mock("api.example.com", { json: {...} }) answers every request to that host. */
+  http = {
+    mocks: new Map<string, { status: number; headers: Record<string, string>; body: Uint8Array }>(),
+    requests: [] as [string, string, string][],
+    mock: (host: string, o: { status?: number; json?: Json; body?: string; headers?: Record<string, string> } = {}) => {
+      const body = o.json !== undefined ? JSON.stringify(o.json) : (o.body ?? "");
+      this.http.mocks.set(host, { status: o.status ?? 200, headers: o.headers ?? {}, body: new TextEncoder().encode(body) });
+    },
+  };
+  net: string[] | null = null;
   logs: [string, string][] = [];
   emitted: [string, Json][] = [];
   private hrs: { atMs: number; bpm: number }[] = [];
@@ -221,6 +231,17 @@ export class Harness {
         }
         return copy(req.action === "param" ? (h.osc.params[req.name!] ?? null) : h.osc.avatar);
       },
+      async http(method, url, _headers, body) {
+        const u = new URL(url);
+        const target = `${u.hostname}:${u.port || 443}`;
+        if (h.net && !h.net.some((n) => n === target || (n.startsWith("*.") && target.endsWith(n.slice(1))))) {
+          throw new PermissionDenied(`add "${target}" to [capsule].net in plugin.toml`);
+        }
+        h.http.requests.push([method, url, body ? new TextDecoder().decode(body) : ""]);
+        const m = h.http.mocks.get(u.hostname);
+        if (!m) throw new LunaError(`no fake for ${u.hostname}: t.http.mock("${u.hostname}", { json: ... })`);
+        return m;
+      },
       async hr(minutes) {
         if (h.perms && !allowed(h.perms.events ?? [], "hr.update")) throw new PermissionDenied('add "hr.update" to [permissions].events in plugin.toml');
         const last = h.hrs[h.hrs.length - 1];
@@ -235,8 +256,13 @@ export class Harness {
 export async function harness(opts: { config?: Json; manifest?: string; bot?: Bot } = {}): Promise<Harness> {
   const b = opts.bot ?? defaultBot;
   const path = opts.manifest ?? "plugin.toml";
-  const perms = fs.existsSync(path) ? (parseToml(fs.readFileSync(path, "utf8")).permissions ?? {}) : null;
+  const manifest = fs.existsSync(path) ? parseToml(fs.readFileSync(path, "utf8")) : null;
+  const perms = manifest ? (manifest.permissions ?? {}) : null;
   const h = new Harness(b, perms);
+  if (manifest) {
+    const net = manifest.capsule?.net;
+    h.net = Array.isArray(net) ? net.map((n: string) => n.toLowerCase()) : [];
+  }
   b.transport = h.transport();
   b.clock = () => h.now;
   b.id = "dev.test.plugin";

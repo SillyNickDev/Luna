@@ -94,6 +94,20 @@ _TWITCH_PERM = {"user": "read", "follow": "read", "channel": "read", "stream": "
                 "ads": "ads", "snooze": "ads", "raid": "raid", "unraid": "raid"}
 
 
+class _HTTPFake:
+    """Fake HTTPS: t.http.mock("api.example.com", json={...}) answers every request to that host."""
+
+    def __init__(self):
+        self.mocks = {}
+        self.requests = []  # (method, url, body)
+
+    def mock(self, host, status=200, json=None, body=b"", headers=None):
+        if json is not None:
+            import json as _json
+            body = _json.dumps(json).encode()
+        self.mocks[host] = (status, headers or {}, body if isinstance(body, bytes) else body.encode())
+
+
 class _OSCFake:
     """What the plugin sent to VRChat; set params and avatar to fake what VRChat reports."""
 
@@ -176,6 +190,18 @@ class _Fake:
         elif call == "follow":
             v = {"followed_at": tw.follows[user]} if user in tw.follows else None
         return json.dumps(v).encode()
+
+    def http(self, method, url, headers, body, timeout):
+        import urllib.parse
+        u = urllib.parse.urlsplit(url)
+        target = f"{u.hostname}:{u.port or 443}"
+        net = self.h.net
+        if net is not None and not any(n == target or (n.startswith("*.") and target.endswith(n[1:])) for n in net):
+            raise errors.PermissionDenied(f'add "{target}" to [capsule].net in plugin.toml')
+        self.h.http.requests.append((method, url, body))
+        if u.hostname not in self.h.http.mocks:
+            raise errors.LunaError(f"no fake for {u.hostname}: t.http.mock({u.hostname!r}, json=...)")
+        return self.h.http.mocks[u.hostname]
 
     def osc(self, action, address="", value=b"", type="", text="", name="", simulated=False):
         have = (self.h.perms or {}).get("osc", []) if self.h.perms is not None else None
@@ -266,7 +292,7 @@ class _Fake:
 class Harness:
     def __init__(self, plugin, config):
         import asyncio
-        self.chat, self.mod, self.twitch, self.osc = _Chat(), _Mod(), _Twitch(), _OSCFake()
+        self.chat, self.mod, self.twitch, self.osc, self.http = _Chat(), _Mod(), _Twitch(), _OSCFake(), _HTTPFake()
         self._hr = []  # (at_ms, bpm), from emitted hr.update events
         self.viewers = {}  # user id → profile dict, for bot.viewers.get
         self.store, self.logs, self.emitted = {}, [], []
@@ -274,6 +300,7 @@ class Harness:
         self._links, self._down, self._cooldowns = {}, set(), {}
         self._n = 0
         self.perms = self._permissions(plugin)
+        self.net = self._net(plugin)
         bot._t = _Fake(self)
         bot.clock = self.clock
         bot.id = "dev.test.plugin"
@@ -300,6 +327,16 @@ class Harness:
             return None  # no manifest yet: nothing to enforce
         with open(path, "rb") as fh:
             return tomllib.load(fh).get("permissions", {})
+
+    @staticmethod
+    def _net(plugin):
+        f = getattr(plugin, "__file__", None)
+        path = os.path.join(os.path.dirname(f), "plugin.toml") if f else None
+        if not path or not os.path.exists(path):
+            return None
+        with open(path, "rb") as fh:
+            net = tomllib.load(fh).get("capsule", {}).get("net", [])
+        return [] if net == "none" else [n.lower() for n in net]
 
     def _need_store(self):
         if self.perms is not None and not self.perms.get("store"):

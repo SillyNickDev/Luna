@@ -141,6 +141,17 @@ class SDKTest(unittest.TestCase):
         self.assertEqual(cfg.redeem[0].param, "Ears")
         self.assertEqual(S._schema()["redeem"]["type"], "list")
 
+    def test_http(self):
+        t = harness(main)
+        with self.assertRaises(PermissionDenied) as e:
+            main.bot.http.get("https://api.example.com/x")  # the example lists no hosts
+        self.assertIn('"api.example.com:443" to [capsule].net', str(e.exception))
+        t.net = ["api.example.com:443"]
+        t.http.mock("api.example.com", json={"ok": 1})
+        r = main.bot.http.post("https://api.example.com/x", json={"a": 1})
+        self.assertEqual((r.status, r.json()), (200, {"ok": 1}))
+        self.assertEqual(t.http.requests, [("POST", "https://api.example.com/x", b'{"a": 1}')])
+
     def test_mod_permission(self):
         t = harness(main)
         t.perms = dict(t.perms, mod=[])

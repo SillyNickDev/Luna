@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"net/http"
 	"os"
 	"reflect"
 	"runtime/debug"
@@ -236,6 +237,8 @@ type Bot struct {
 	Links   Links
 	OSC     OSC
 	HR      HR
+	// HTTP reaches the hosts in [capsule].net, HTTPS only. Tests may swap it for a fake.
+	HTTP *http.Client
 
 	CrashOnError bool   // tests: a handler error panics instead of being logged
 	ID           string // set once connected
@@ -266,7 +269,7 @@ func New() *Bot {
 	b := &Bot{cli: map[string]*cliCmd{}, chat: map[string]*chatCmd{}, now: time.Now, ctx: context.Background(),
 		wake: make(chan struct{}, 1), provides: map[string]provider{}}
 	b.Chat, b.Mod, b.Store, b.Twitch, b.Viewers, b.Log, b.Timers = Chat{b}, Mod{b}, Store{b}, Twitch{b}, Viewers{b}, Log{b}, Timers{b}
-	b.Links, b.OSC, b.HR = Links{b}, OSC{b}, HR{b}
+	b.Links, b.OSC, b.HR, b.HTTP = Links{b}, OSC{b}, HR{b}, newHTTP()
 	b.linkCall = (&liveLinks{conns: map[string]linkConn{}}).call
 	return b
 }

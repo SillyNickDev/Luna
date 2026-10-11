@@ -60,6 +60,22 @@ export interface Transport {
   linkCall(use: string, args: Json): Promise<Json>;
   osc(req: { action: string; address?: string; value?: Json; type?: string; text?: string; name?: string; simulated?: boolean }): Promise<Json>;
   hr(minutes: number): Promise<{ bpm: number; atMs: number; history: { atMs: number; bpm: number }[] }>;
+  http(method: string, url: string, headers: Record<string, string>, body: Uint8Array | undefined, timeoutMs: number):
+    Promise<{ status: number; headers: Record<string, string>; body: Uint8Array }>;
+}
+
+/** An HTTP response: status, headers (lowercase names), body bytes, text(), json(). */
+export class HttpResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: Uint8Array;
+  constructor(status: number, headers: Record<string, string>, body: Uint8Array) {
+    this.status = status;
+    this.headers = headers;
+    this.body = body;
+  }
+  text(): string { return new TextDecoder().decode(this.body); }
+  json(): any { return JSON.parse(this.text()); }
 }
 
 const current = new AsyncLocalStorage<Event | undefined>();
@@ -247,6 +263,25 @@ export class Bot<C extends Record<string, any> = Record<string, any>> {
     chatbox: (text: string) => this._t().osc({ action: "chatbox", text: String(text), simulated: simulated() }),
     param: (name: string) => this._t().osc({ action: "param", name }),
     avatar: () => this._t().osc({ action: "avatar" }),
+  };
+
+  /** HTTPS to the hosts in [capsule].net, through Luna's egress proxy. */
+  readonly http = {
+    request: async (method: string, url: string, o: { headers?: Record<string, string>; body?: string | Uint8Array; json?: Json;
+      timeout?: string | number } = {}) => {
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(o.headers ?? {})) headers[k.toLowerCase()] = v;
+      let body = o.body;
+      if (o.json !== undefined) {
+        body = JSON.stringify(o.json);
+        headers["content-type"] ??= "application/json";
+      }
+      const r = await this._t().http(method.toUpperCase(), url, headers,
+        typeof body === "string" ? new TextEncoder().encode(body) : body, ms(o.timeout ?? "30s"));
+      return new HttpResponse(r.status, r.headers, r.body);
+    },
+    get: (url: string, o = {}) => this.http.request("GET", url, o),
+    post: (url: string, o: Parameters<Bot["http"]["request"]>[2] = {}) => this.http.request("POST", url, o),
   };
 
   readonly hr = {

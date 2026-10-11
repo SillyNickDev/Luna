@@ -138,9 +138,6 @@ func (rt *Runtime) Enable(pkg *Unpacked, uses []string) (*Capsule, error) {
 // CanRun says why this host can't run pkg, failing closed on features not built yet.
 func CanRun(pkg *Unpacked, runtimesDir string) error {
 	m := pkg.Manifest
-	if len(m.Net) > 0 {
-		return errors.New("network allowlists aren't supported yet; this package can't run")
-	}
 	if len(m.Devices) > 0 {
 		return errors.New("device access isn't supported yet; this package can't run")
 	}
@@ -382,11 +379,25 @@ func (c *Capsule) runOnce(ctx context.Context) *Failure {
 	}
 
 	m := c.Pkg.Manifest
+	if len(m.Net) > 0 {
+		ln, err := listenUnix(filepath.Join(sock, "egress.sock"))
+		if err != nil {
+			return c.fail("handshake", err)
+		}
+		lns = append(lns, ln)
+		go newEgress(m.Net, c.Logs).serve(ln)
+	}
 	ls, err := launch(c.Pkg, c.rt.RuntimesDir)
 	if err != nil {
 		return c.fail("handshake", err)
 	}
 	mounts := append([]sandbox.Mount{{Src: c.Pkg.Dir, Dst: "/pkg"}, {Src: sock, Dst: "/run/capsule"}}, ls.mounts...)
+	var caEnv []string
+	if ca := hostCABundle(); len(m.Net) > 0 && ca != "" {
+		// The sandbox has no /etc, so HTTPS clients get the host's trusted roots, read-only.
+		mounts = append(mounts, sandbox.Mount{Src: ca, Dst: "/etc/ssl/certs/ca-certificates.crt"})
+		caEnv = []string{"SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"}
+	}
 	if family, _, _ := strings.Cut(m.Runtime, "-"); c.rt.SDKDirs[family] != "" {
 		mounts = append(mounts, sandbox.Mount{Src: c.rt.SDKDirs[family], Dst: "/sdk"})
 	}
@@ -404,12 +415,14 @@ func (c *Capsule) runOnce(ctx context.Context) *Failure {
 		"CAPSULE_CONTROL=/run/capsule/control.sock",
 		"CAPSULE_HOST=/run/capsule/host.sock",
 		"CAPSULE_LINKS=/run/capsule/links",
+		"CAPSULE_EGRESS=/run/capsule/egress.sock", // only there when [capsule].net lists hosts
 		"HOME=" + dir,
 	}
 	for k, v := range m.Env {
 		env = append(env, k+"="+v)
 	}
 	env = append(env, ls.env...)
+	env = append(env, caEnv...)
 	proc, err := sandbox.Start(sandbox.Spec{
 		Name:   c.ID,
 		Root:   filepath.Join(base, "root"),
@@ -646,4 +659,14 @@ func listenUnix(path string) (*net.UnixListener, error) {
 	}
 	os.Chmod(path, 0o600)
 	return ln, nil
+}
+
+// hostCABundle is the system's trusted root certificates, where Linux distributions keep them.
+func hostCABundle() string {
+	for _, p := range []string{"/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/cert.pem"} {
+		if fi, err := os.Stat(p); err == nil && fi.Size() > 0 {
+			return p
+		}
+	}
+	return "" // Windows: Go uses the system store directly
 }
