@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"luna/internal/capsule/sandbox"
 	"luna/internal/config"
 )
 
@@ -29,6 +30,9 @@ const usageText = `usage: luna [--config <dir>] <command>
 type paths struct{ config, data, sock string }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == sandbox.InitArg {
+		sandbox.Init() // luna re-executes itself as each capsule's setup stage
+	}
 	fs := flag.NewFlagSet("luna", flag.ExitOnError)
 	confDir := fs.String("config", "", "config directory")
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usageText) }
