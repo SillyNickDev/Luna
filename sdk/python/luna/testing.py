@@ -27,7 +27,7 @@ _bot.TESTING = True
 _MIN_RANK = {
     "chat.commands.use": "viewer", "mod.delete": "moderator", "mod.timeout": "moderator", "mod.warn": "moderator",
     "mod.ban": "moderator", "mod.undo.own": "moderator", "mod.notes": "moderator", "mod.shield": "moderator",
-    "stream.shoutout": "moderator", "commands.edit": "moderator", "polls.run": "moderator", "queue.run": "moderator", "mod.undo.others": "luna-mod",
+    "stream.shoutout": "moderator", "commands.edit": "moderator", "polls.run": "moderator", "queue.run": "moderator", "songs.skip": "moderator", "mod.undo.others": "luna-mod",
     "filters.edit": "luna-mod", "giveaway.run": "luna-mod", "points.adjust": "luna-mod", "stream.edit": "luna-mod",
     "luna.chat_cli": "luna-mod", "mod.lock": "head-mod", "perms.approve_luna_mods": "head-mod",
 }

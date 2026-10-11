@@ -27,13 +27,15 @@ type Manifest struct {
 	Version     string `toml:"version"`
 	API         string `toml:"api"`
 	Permissions struct {
-		Events  []string `toml:"events"`
-		Chat    []string `toml:"chat"`
-		Store   bool     `toml:"store"`
-		Mod     []string `toml:"mod"`
-		Twitch  []string `toml:"twitch"`
-		Viewers bool     `toml:"viewers"`
-		OSC     []string `toml:"osc"` // "send:/avatar/parameters/Ears" (a trailing * matches a prefix), "chatbox", "read"
+		Events    []string `toml:"events"`
+		Chat      []string `toml:"chat"`
+		Store     bool     `toml:"store"`
+		Mod       []string `toml:"mod"`
+		Twitch    []string `toml:"twitch"`
+		Viewers   bool     `toml:"viewers"`
+		OSC       []string `toml:"osc"`       // "send:/avatar/parameters/Ears" (a trailing * matches a prefix), "chatbox", "read"
+		Spotify   []string `toml:"spotify"`   // "read" (search, now playing, playlists), "control" (queue, skip)
+		Translate bool     `toml:"translate"` // translations with the streamer's DeepL key
 	} `toml:"permissions"`
 	CLI struct {
 		Name     string       `toml:"name"`
@@ -141,6 +143,7 @@ func (m *Manifest) validate() error {
 		{"chat", m.Permissions.Chat, chatPerms},
 		{"mod", m.Permissions.Mod, modPerms},
 		{"twitch", m.Permissions.Twitch, twitchPerms},
+		{"spotify", m.Permissions.Spotify, []string{"read", "control"}},
 	} {
 		for _, c := range group.have {
 			if !slices.Contains(group.all, c) {
@@ -352,6 +355,15 @@ func (m *Manifest) Describe() string {
 		default:
 			fmt.Fprintf(&b, "  sets VRChat avatar parameters: %s\n", strings.TrimPrefix(o, "send:"))
 		}
+	}
+	if slices.Contains(m.Permissions.Spotify, "read") {
+		b.WriteString("  searches Spotify and sees what's playing on your Spotify\n")
+	}
+	if slices.Contains(m.Permissions.Spotify, "control") {
+		b.WriteString("  adds songs to your Spotify queue and skips songs\n")
+	}
+	if m.Permissions.Translate {
+		b.WriteString("  translates text with your DeepL key (it uses your monthly quota)\n")
 	}
 	if m.Permissions.Viewers {
 		b.WriteString("  reads viewer profiles: first and last seen, messages, watch time, streaks\n")

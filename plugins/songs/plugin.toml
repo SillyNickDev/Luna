@@ -1,0 +1,54 @@
+id = "luna.songs"
+name = "Song requests: viewers queue songs on your Spotify"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__songs"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+events = ["twitch.channel.redeem", "twitch.stream.online", "twitch.stream.offline"]
+chat = ["send"]
+twitch = ["read"]
+spotify = ["read", "control"]
+store = true
+
+[links]
+uses = ["luna.points:spend", "luna.points:add"]   # only when cost > 0
+
+[cli]
+name = "songs"
+
+[[cli.commands]]
+name = "list"
+summary = "requests waiting to play"
+
+[[chat.commands]]
+name = "sr"
+aliases = ["songrequest"]
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "song"
+cooldown = { global = "10s" }
+
+[[chat.commands]]
+name = "wrongsong"
+cooldown = { user = "5s" }
+
+[[chat.commands]]
+name = "skip"
+capability = "songs.skip"
+
+[config]
+live_only = { type = "bool", default = true }
+chat_requests = { type = "bool", default = true }   # false: only through the channel point reward
+reward = { type = "str", default = "" }              # a channel point reward whose text is the request
+cost = { type = "int", default = 0 }                 # points per !sr request (needs Points)
+max_per_user = { type = "int", default = 2 }
+max_length_s = { type = "int", default = 600 }
+no_explicit = { type = "bool", default = false }
+blocklist = { type = "str", default = "" }           # comma-separated words, artists or track IDs
+playlist = { type = "str", default = "" }            # only songs in this playlist (link or ID)

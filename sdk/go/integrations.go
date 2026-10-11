@@ -119,3 +119,73 @@ func (h HR) History(c *Ctx, minutes int) ([]HRSample, error) {
 	}
 	return out, nil
 }
+
+// Spotify is the streamer's Spotify, through Luna; needs [permissions].spotify.
+type Spotify struct{ b *Bot }
+
+type Track struct {
+	ID         string `json:"id"`
+	URI        string `json:"uri"`
+	Name       string `json:"name"`
+	Artists    string `json:"artists"`
+	DurationMS int    `json:"duration_ms"`
+	Explicit   bool   `json:"explicit"`
+}
+
+type Playing struct {
+	Track     *Track `json:"track"`
+	IsPlaying bool   `json:"is_playing"`
+}
+
+func (s Spotify) call(c *Ctx, call string, args, out any) error {
+	req := &pb.SpotifyRequest{Call: call, Simulated: c.simulated()}
+	if args != nil {
+		req.ArgsJson, _ = json.Marshal(args)
+	}
+	r, err := s.b.host.Spotify(c, req)
+	if err != nil {
+		return wrap(err)
+	}
+	if out == nil {
+		return nil
+	}
+	return json.Unmarshal(r.DataJson, out)
+}
+
+// Find is the track a request names: a Spotify link, or the top search result (nil if none). Needs "read".
+func (s Spotify) Find(c *Ctx, query string) (*Track, error) {
+	var t *Track
+	return t, s.call(c, "find", map[string]string{"query": query}, &t)
+}
+
+// Playing is what's playing now. Needs "read".
+func (s Spotify) Playing(c *Ctx) (*Playing, error) {
+	var p Playing
+	return &p, s.call(c, "playing", nil, &p)
+}
+
+// InPlaylist reports whether a track is in a playlist (link, URI or ID; cached for 10 minutes). Needs "read".
+func (s Spotify) InPlaylist(c *Ctx, playlist, trackID string) (bool, error) {
+	var r struct {
+		In bool `json:"in"`
+	}
+	return r.In, s.call(c, "in_playlist", map[string]string{"playlist": playlist, "track": trackID}, &r)
+}
+
+// Queue adds a track to the streamer's Spotify queue. Needs "control".
+func (s Spotify) Queue(c *Ctx, uri string) error {
+	return s.call(c, "queue", map[string]string{"uri": uri}, nil)
+}
+
+// Skip skips to the next song. Needs "control".
+func (s Spotify) Skip(c *Ctx) error { return s.call(c, "skip", nil, nil) }
+
+// Translate turns text into the target language ("EN", "DE", "PT-BR", ...) with the
+// streamer's DeepL key, and says which language it was in. Needs translate = true.
+func (b *Bot) Translate(c *Ctx, text, target string) (out, source string, err error) {
+	r, err := b.host.Translate(c, &pb.TranslateRequest{Text: text, Target: target})
+	if err != nil {
+		return "", "", wrap(err)
+	}
+	return r.Text, r.Source, nil
+}

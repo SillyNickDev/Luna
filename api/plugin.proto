@@ -40,6 +40,11 @@ service Host {
   rpc Osc(OscRequest) returns (OscReply);
   // Hr is the latest heart rate and recent history; needs hr.update in [permissions].events.
   rpc Hr(HrRequest) returns (HrReply);
+  // Spotify reaches the streamer's Spotify through Luna; needs [permissions].spotify: "read"
+  // (find, playing, in_playlist) or "control" (queue, skip).
+  rpc Spotify(SpotifyRequest) returns (SpotifyReply);
+  // Translate translates text with the streamer's DeepL key; needs translate = true.
+  rpc Translate(TranslateRequest) returns (TranslateReply);
 }
 
 message Empty {}
@@ -198,4 +203,24 @@ message HrReply {
 message HrSample {
   int64 at_ms = 1;
   int32 bpm = 2;
+}
+
+message SpotifyRequest {
+  string call = 1;      // find {query}, playing, in_playlist {playlist, track}, queue {uri}, skip
+  bytes args_json = 2;
+  bool simulated = 3;   // control answering a simulated event: printed, never sent
+}
+
+message SpotifyReply {
+  bytes data_json = 1;
+}
+
+message TranslateRequest {
+  string text = 1;   // up to 1000 characters
+  string target = 2; // language code: EN, DE, PT-BR, ...
+}
+
+message TranslateReply {
+  string text = 1;
+  string source = 2; // the language DeepL detected
 }

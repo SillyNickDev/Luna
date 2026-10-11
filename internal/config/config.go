@@ -39,6 +39,9 @@ type Config struct {
 		ConfigDir   string `toml:"config_dir"` // VRChat's OSC folder, for avatar parameters; found by itself under Proton or Windows
 		AllowRemote bool   `toml:"allow_remote"`
 	} `toml:"osc"`
+	Spotify struct {
+		ClientID string `toml:"client_id"` // your app at developer.spotify.com, with redirect URI http://127.0.0.1:43219/callback
+	} `toml:"spotify"`
 	MemoryLimitMiB int `toml:"memory_limit_mib"`
 	// Plugins holds each plugin's settings, keyed by its CLI name, the last part of its ID,
 	// or its full ID. They're checked against the plugin's [config] schema when it starts.

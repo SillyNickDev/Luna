@@ -96,6 +96,12 @@ func runDaemon(p paths) error {
 	host := &plugin.Host{Bus: b, Publish: publish, Store: st, Guard: g, HR: &plugin.HR{}}
 	hrSub := b.Subscribe(64, "hr.update")
 	go feedHR(hrSub, host.HR)
+	if sh := startSpotify(cfg.Get(), secrets.Open(p.data)); sh != nil {
+		host.Spotify = sh // only when connected: a nil *spotifyHost would make a non-nil interface
+	}
+	if dh := startDeepL(secrets.Open(p.data)); dh != nil {
+		host.Translator = dh
+	}
 	oc := startOSC(ctx, cfg.Get(), publish)
 	if oc != nil {
 		host.OSC = oc

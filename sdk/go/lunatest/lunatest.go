@@ -40,14 +40,17 @@ import (
 
 // Harness is one fake Luna around one bot.
 type Harness struct {
-	tb     testing.TB
-	bot    *luna.Bot
-	m      *plugin.Manifest
-	Store  *store.Store
-	Twitch *FakeTwitch
-	OSC    *FakeOSC
-	Clock  *Clock
-	Events []event.Event // everything the plugin emitted
+	tb      testing.TB
+	bot     *luna.Bot
+	m       *plugin.Manifest
+	Store   *store.Store
+	Twitch  *FakeTwitch
+	OSC     *FakeOSC
+	Spotify *FakeSpotify
+	// Translations fakes DeepL: text → [translation, source language]. Unknown text comes back as is, in the target language.
+	Translations map[string][2]string
+	Clock        *Clock
+	Events       []event.Event // everything the plugin emitted
 
 	mu        sync.Mutex
 	msgs      []guard.Msg
@@ -257,6 +260,52 @@ func (f *FakeOSC) Avatar() osc.Avatar {
 	return f.Av
 }
 
+type fakeTranslator struct{ h *Harness }
+
+func (f fakeTranslator) Translate(_ context.Context, text, target string) (string, string, error) {
+	f.h.mu.Lock()
+	defer f.h.mu.Unlock()
+	if t, ok := f.h.Translations[text]; ok {
+		return t[0], t[1], nil
+	}
+	return text, strings.ToUpper(target), nil
+}
+
+// FakeSpotify answers Spotify calls: Find matches Tracks by link or a word of the name.
+type FakeSpotify struct {
+	mu        sync.Mutex
+	Tracks    map[string]*luna.Track // by id
+	Playlists map[string][]string    // playlist id → track ids
+	Now       *luna.Track            // playing
+	Queued    []string               // URIs, in order
+	Skips     int
+}
+
+func (f *FakeSpotify) Call(_ context.Context, call string, raw []byte) (any, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var a struct{ Query, URI, Playlist, Track string }
+	json.Unmarshal(raw, &a)
+	switch call {
+	case "find":
+		for _, t := range f.Tracks {
+			if strings.Contains(a.Query, t.ID) || strings.Contains(strings.ToLower(t.Name), strings.ToLower(a.Query)) {
+				return t, nil
+			}
+		}
+		return nil, nil
+	case "playing":
+		return luna.Playing{Track: f.Now, IsPlaying: f.Now != nil}, nil
+	case "in_playlist":
+		return map[string]bool{"in": slices.Contains(f.Playlists[a.Playlist], a.Track)}, nil
+	case "queue":
+		f.Queued = append(f.Queued, a.URI)
+	case "skip":
+		f.Skips++
+	}
+	return nil, nil
+}
+
 // TakeSent returns what was sent since the last call.
 func (f *FakeOSC) TakeSent() []string {
 	f.mu.Lock()
@@ -316,8 +365,10 @@ func New(tb testing.TB, bot *luna.Bot, dir string, cfg map[string]any) *Harness 
 	}
 	b := bus.New()
 	h.OSC = &FakeOSC{Params: map[string]any{}}
+	h.Translations = map[string][2]string{}
+	h.Spotify = &FakeSpotify{Tracks: map[string]*luna.Track{}, Playlists: map[string][]string{}}
 	h.hr = &plugin.HR{}
-	host := &plugin.Host{Bus: b, Store: st, Guard: g, Twitch: h.Twitch, OSC: h.OSC, HR: h.hr, Publish: func(e event.Event) {
+	host := &plugin.Host{Bus: b, Store: st, Guard: g, Twitch: h.Twitch, OSC: h.OSC, HR: h.hr, Spotify: h.Spotify, Translator: fakeTranslator{h}, Publish: func(e event.Event) {
 		h.mu.Lock()
 		h.Events = append(h.Events, e)
 		h.mu.Unlock()

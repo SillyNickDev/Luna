@@ -7,13 +7,18 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"luna/internal/bus"
 	"luna/internal/config"
+	"luna/internal/deepl"
 	"luna/internal/event"
 	"luna/internal/osc"
 	"luna/internal/plugin"
+	"luna/internal/secrets"
+	"luna/internal/spotify"
 )
 
 // startOSC connects to VRChat when [osc] is enabled.
@@ -116,4 +121,85 @@ func feedHR(sub *bus.Sub, hr *plugin.HR) {
 			hr.Add(ev.TS, d.BPM)
 		}
 	}
+}
+
+// spotifyHost answers plugins' Spotify calls with the daemon's Spotify login.
+type spotifyHost struct {
+	c     *spotify.Client
+	mu    sync.Mutex
+	lists map[string]playlistCache
+}
+
+type playlistCache struct {
+	ids map[string]bool
+	at  time.Time
+}
+
+// startSpotify connects Spotify when it's configured and logged in.
+func startSpotify(cfg *config.Config, store *secrets.Store) *spotifyHost {
+	if cfg.Spotify.ClientID == "" {
+		return nil
+	}
+	c, err := spotify.NewClient(cfg.Spotify.ClientID, store)
+	if err != nil {
+		slog.Info("spotify not connected", "err", err)
+		return nil
+	}
+	return &spotifyHost{c: c, lists: map[string]playlistCache{}}
+}
+
+func (h *spotifyHost) Call(ctx context.Context, call string, raw []byte) (any, error) {
+	var a struct {
+		Query, URI, Playlist, Track string
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &a); err != nil {
+			return nil, err
+		}
+	}
+	switch call {
+	case "find":
+		return h.c.Find(ctx, a.Query)
+	case "playing":
+		return h.c.Playing(ctx)
+	case "queue":
+		if !strings.HasPrefix(a.URI, "spotify:track:") {
+			return nil, errors.New("queue takes a spotify:track: URI")
+		}
+		return nil, h.c.Queue(ctx, a.URI)
+	case "skip":
+		return nil, h.c.Skip(ctx)
+	case "in_playlist":
+		id := spotify.PlaylistID(a.Playlist)
+		h.mu.Lock()
+		pc, ok := h.lists[id]
+		h.mu.Unlock()
+		if !ok || time.Since(pc.at) > 10*time.Minute { // the streamer may edit the playlist mid-stream
+			ids, err := h.c.PlaylistTracks(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			pc = playlistCache{ids, time.Now()}
+			h.mu.Lock()
+			h.lists[id] = pc
+			h.mu.Unlock()
+		}
+		return map[string]bool{"in": pc.ids[a.Track]}, nil
+	}
+	return nil, fmt.Errorf("unknown spotify call %q", call)
+}
+
+// deeplHost translates with the DeepL key from the secrets store.
+type deeplHost struct{ key string }
+
+func startDeepL(store *secrets.Store) *deeplHost {
+	k, err := store.Get("deepl")
+	if err != nil {
+		return nil
+	}
+	return &deeplHost{strings.TrimSpace(string(k))}
+}
+
+func (d *deeplHost) Translate(ctx context.Context, text, target string) (string, string, error) {
+	return deepl.Translate(ctx, d.key, text, target)
 }

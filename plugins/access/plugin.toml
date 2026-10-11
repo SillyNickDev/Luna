@@ -1,0 +1,30 @@
+id = "luna.access"
+name = "Accessibility: pronouns and chat translation"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__access"
+limits = { memory = "32m", cpu = 0.1 }
+net = ["api.pronouns.alejo.io:443"]
+
+[permissions]
+events = ["twitch.chat.message"]
+chat = ["send"]
+translate = true
+store = true
+
+[[chat.commands]]
+name = "pronouns"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "translate"
+aliases = ["tr"]
+cooldown = { user = "10s" }
+
+[config]
+language = { type = "str", default = "EN" }          # the stream's language: what chat is translated into
+auto_translate = { type = "bool", default = false }  # translate every other-language message (uses DeepL quota)
+min_chars = { type = "int", default = 12 }           # shorter messages aren't auto-translated

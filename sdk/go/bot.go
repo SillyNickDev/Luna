@@ -237,6 +237,7 @@ type Bot struct {
 	Links   Links
 	OSC     OSC
 	HR      HR
+	Spotify Spotify
 	// HTTP reaches the hosts in [capsule].net, HTTPS only. Tests may swap it for a fake.
 	HTTP *http.Client
 
@@ -269,7 +270,7 @@ func New() *Bot {
 	b := &Bot{cli: map[string]*cliCmd{}, chat: map[string]*chatCmd{}, now: time.Now, ctx: context.Background(),
 		wake: make(chan struct{}, 1), provides: map[string]provider{}}
 	b.Chat, b.Mod, b.Store, b.Twitch, b.Viewers, b.Log, b.Timers = Chat{b}, Mod{b}, Store{b}, Twitch{b}, Viewers{b}, Log{b}, Timers{b}
-	b.Links, b.OSC, b.HR, b.HTTP = Links{b}, OSC{b}, HR{b}, newHTTP()
+	b.Links, b.OSC, b.HR, b.HTTP, b.Spotify = Links{b}, OSC{b}, HR{b}, newHTTP(), Spotify{b}
 	b.linkCall = (&liveLinks{conns: map[string]linkConn{}}).call
 	return b
 }

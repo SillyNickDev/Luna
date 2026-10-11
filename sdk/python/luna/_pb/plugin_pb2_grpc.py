@@ -119,6 +119,16 @@ class HostStub:
                 request_serializer=plugin__pb2.HrRequest.SerializeToString,
                 response_deserializer=plugin__pb2.HrReply.FromString,
                 _registered_method=True)
+        self.Spotify = channel.unary_unary(
+                '/luna.plugin.v1.Host/Spotify',
+                request_serializer=plugin__pb2.SpotifyRequest.SerializeToString,
+                response_deserializer=plugin__pb2.SpotifyReply.FromString,
+                _registered_method=True)
+        self.Translate = channel.unary_unary(
+                '/luna.plugin.v1.Host/Translate',
+                request_serializer=plugin__pb2.TranslateRequest.SerializeToString,
+                response_deserializer=plugin__pb2.TranslateReply.FromString,
+                _registered_method=True)
 
 
 class HostServicer:
@@ -240,6 +250,21 @@ class HostServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Spotify(self, request, context):
+        """Spotify reaches the streamer's Spotify through Luna; needs [permissions].spotify: "read"
+        (find, playing, in_playlist) or "control" (queue, skip).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Translate(self, request, context):
+        """Translate translates text with the streamer's DeepL key; needs translate = true.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_HostServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -327,6 +352,16 @@ def add_HostServicer_to_server(servicer, server):
                     servicer.Hr,
                     request_deserializer=plugin__pb2.HrRequest.FromString,
                     response_serializer=plugin__pb2.HrReply.SerializeToString,
+            ),
+            'Spotify': grpc.unary_unary_rpc_method_handler(
+                    servicer.Spotify,
+                    request_deserializer=plugin__pb2.SpotifyRequest.FromString,
+                    response_serializer=plugin__pb2.SpotifyReply.SerializeToString,
+            ),
+            'Translate': grpc.unary_unary_rpc_method_handler(
+                    servicer.Translate,
+                    request_deserializer=plugin__pb2.TranslateRequest.FromString,
+                    response_serializer=plugin__pb2.TranslateReply.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -788,6 +823,60 @@ class Host:
             '/luna.plugin.v1.Host/Hr',
             plugin__pb2.HrRequest.SerializeToString,
             plugin__pb2.HrReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Spotify(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/Spotify',
+            plugin__pb2.SpotifyRequest.SerializeToString,
+            plugin__pb2.SpotifyReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Translate(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/luna.plugin.v1.Host/Translate',
+            plugin__pb2.TranslateRequest.SerializeToString,
+            plugin__pb2.TranslateReply.FromString,
             options,
             channel_credentials,
             insecure,

@@ -1605,6 +1605,214 @@ func (x *HrSample) GetBpm() int32 {
 	return 0
 }
 
+type SpotifyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Call          string                 `protobuf:"bytes,1,opt,name=call,proto3" json:"call,omitempty"` // find {query}, playing, in_playlist {playlist, track}, queue {uri}, skip
+	ArgsJson      []byte                 `protobuf:"bytes,2,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`
+	Simulated     bool                   `protobuf:"varint,3,opt,name=simulated,proto3" json:"simulated,omitempty"` // control answering a simulated event: printed, never sent
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SpotifyRequest) Reset() {
+	*x = SpotifyRequest{}
+	mi := &file_plugin_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpotifyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpotifyRequest) ProtoMessage() {}
+
+func (x *SpotifyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpotifyRequest.ProtoReflect.Descriptor instead.
+func (*SpotifyRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *SpotifyRequest) GetCall() string {
+	if x != nil {
+		return x.Call
+	}
+	return ""
+}
+
+func (x *SpotifyRequest) GetArgsJson() []byte {
+	if x != nil {
+		return x.ArgsJson
+	}
+	return nil
+}
+
+func (x *SpotifyRequest) GetSimulated() bool {
+	if x != nil {
+		return x.Simulated
+	}
+	return false
+}
+
+type SpotifyReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DataJson      []byte                 `protobuf:"bytes,1,opt,name=data_json,json=dataJson,proto3" json:"data_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SpotifyReply) Reset() {
+	*x = SpotifyReply{}
+	mi := &file_plugin_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpotifyReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpotifyReply) ProtoMessage() {}
+
+func (x *SpotifyReply) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpotifyReply.ProtoReflect.Descriptor instead.
+func (*SpotifyReply) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SpotifyReply) GetDataJson() []byte {
+	if x != nil {
+		return x.DataJson
+	}
+	return nil
+}
+
+type TranslateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`     // up to 1000 characters
+	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // language code: EN, DE, PT-BR, ...
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TranslateRequest) Reset() {
+	*x = TranslateRequest{}
+	mi := &file_plugin_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TranslateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TranslateRequest) ProtoMessage() {}
+
+func (x *TranslateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TranslateRequest.ProtoReflect.Descriptor instead.
+func (*TranslateRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *TranslateRequest) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *TranslateRequest) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+type TranslateReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"` // the language DeepL detected
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TranslateReply) Reset() {
+	*x = TranslateReply{}
+	mi := &file_plugin_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TranslateReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TranslateReply) ProtoMessage() {}
+
+func (x *TranslateReply) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TranslateReply.ProtoReflect.Descriptor instead.
+func (*TranslateReply) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *TranslateReply) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *TranslateReply) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
 var File_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_proto_rawDesc = "" +
@@ -1719,7 +1927,20 @@ const file_plugin_proto_rawDesc = "" +
 	"\ahistory\x18\x03 \x03(\v2\x18.luna.plugin.v1.HrSampleR\ahistory\"1\n" +
 	"\bHrSample\x12\x13\n" +
 	"\x05at_ms\x18\x01 \x01(\x03R\x04atMs\x12\x10\n" +
-	"\x03bpm\x18\x02 \x01(\x05R\x03bpm2\xfc\b\n" +
+	"\x03bpm\x18\x02 \x01(\x05R\x03bpm\"_\n" +
+	"\x0eSpotifyRequest\x12\x12\n" +
+	"\x04call\x18\x01 \x01(\tR\x04call\x12\x1b\n" +
+	"\targs_json\x18\x02 \x01(\fR\bargsJson\x12\x1c\n" +
+	"\tsimulated\x18\x03 \x01(\bR\tsimulated\"+\n" +
+	"\fSpotifyReply\x12\x1b\n" +
+	"\tdata_json\x18\x01 \x01(\fR\bdataJson\">\n" +
+	"\x10TranslateRequest\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12\x16\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\"<\n" +
+	"\x0eTranslateReply\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source2\x94\n" +
+	"\n" +
 	"\x04Host\x12A\n" +
 	"\x05Hello\x12\x1c.luna.plugin.v1.HelloRequest\x1a\x1a.luna.plugin.v1.HelloReply\x12F\n" +
 	"\tSubscribe\x12 .luna.plugin.v1.SubscribeRequest\x1a\x15.luna.plugin.v1.Event0\x01\x12F\n" +
@@ -1738,7 +1959,9 @@ const file_plugin_proto_rawDesc = "" +
 	"\x03Log\x12\x1a.luna.plugin.v1.LogRequest\x1a\x15.luna.plugin.v1.Empty\x12:\n" +
 	"\x04Emit\x12\x1b.luna.plugin.v1.EmitRequest\x1a\x15.luna.plugin.v1.Empty\x12;\n" +
 	"\x03Osc\x12\x1a.luna.plugin.v1.OscRequest\x1a\x18.luna.plugin.v1.OscReply\x128\n" +
-	"\x02Hr\x12\x19.luna.plugin.v1.HrRequest\x1a\x17.luna.plugin.v1.HrReplyB\x19Z\x17luna/internal/plugin/pbb\x06proto3"
+	"\x02Hr\x12\x19.luna.plugin.v1.HrRequest\x1a\x17.luna.plugin.v1.HrReply\x12G\n" +
+	"\aSpotify\x12\x1e.luna.plugin.v1.SpotifyRequest\x1a\x1c.luna.plugin.v1.SpotifyReply\x12M\n" +
+	"\tTranslate\x12 .luna.plugin.v1.TranslateRequest\x1a\x1e.luna.plugin.v1.TranslateReplyB\x19Z\x17luna/internal/plugin/pbb\x06proto3"
 
 var (
 	file_plugin_proto_rawDescOnce sync.Once
@@ -1752,7 +1975,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_plugin_proto_goTypes = []any{
 	(*Empty)(nil),             // 0: luna.plugin.v1.Empty
 	(*HelloRequest)(nil),      // 1: luna.plugin.v1.HelloRequest
@@ -1782,6 +2005,10 @@ var file_plugin_proto_goTypes = []any{
 	(*HrRequest)(nil),         // 25: luna.plugin.v1.HrRequest
 	(*HrReply)(nil),           // 26: luna.plugin.v1.HrReply
 	(*HrSample)(nil),          // 27: luna.plugin.v1.HrSample
+	(*SpotifyRequest)(nil),    // 28: luna.plugin.v1.SpotifyRequest
+	(*SpotifyReply)(nil),      // 29: luna.plugin.v1.SpotifyReply
+	(*TranslateRequest)(nil),  // 30: luna.plugin.v1.TranslateRequest
+	(*TranslateReply)(nil),    // 31: luna.plugin.v1.TranslateReply
 }
 var file_plugin_proto_depIdxs = []int32{
 	4,  // 0: luna.plugin.v1.Command.event:type_name -> luna.plugin.v1.Event
@@ -1804,25 +2031,29 @@ var file_plugin_proto_depIdxs = []int32{
 	22, // 17: luna.plugin.v1.Host.Emit:input_type -> luna.plugin.v1.EmitRequest
 	23, // 18: luna.plugin.v1.Host.Osc:input_type -> luna.plugin.v1.OscRequest
 	25, // 19: luna.plugin.v1.Host.Hr:input_type -> luna.plugin.v1.HrRequest
-	2,  // 20: luna.plugin.v1.Host.Hello:output_type -> luna.plugin.v1.HelloReply
-	4,  // 21: luna.plugin.v1.Host.Subscribe:output_type -> luna.plugin.v1.Event
-	5,  // 22: luna.plugin.v1.Host.Commands:output_type -> luna.plugin.v1.Command
-	0,  // 23: luna.plugin.v1.Host.ChatSend:output_type -> luna.plugin.v1.Empty
-	0,  // 24: luna.plugin.v1.Host.Mod:output_type -> luna.plugin.v1.Empty
-	10, // 25: luna.plugin.v1.Host.Twitch:output_type -> luna.plugin.v1.TwitchReply
-	12, // 26: luna.plugin.v1.Host.Viewer:output_type -> luna.plugin.v1.ViewerReply
-	15, // 27: luna.plugin.v1.Host.StoreGet:output_type -> luna.plugin.v1.StoreValue
-	0,  // 28: luna.plugin.v1.Host.StoreSet:output_type -> luna.plugin.v1.Empty
-	0,  // 29: luna.plugin.v1.Host.StoreDelete:output_type -> luna.plugin.v1.Empty
-	18, // 30: luna.plugin.v1.Host.StoreIncr:output_type -> luna.plugin.v1.StoreIncrReply
-	20, // 31: luna.plugin.v1.Host.StoreKeys:output_type -> luna.plugin.v1.StoreKeysReply
-	0,  // 32: luna.plugin.v1.Host.StoreBatch:output_type -> luna.plugin.v1.Empty
-	0,  // 33: luna.plugin.v1.Host.Log:output_type -> luna.plugin.v1.Empty
-	0,  // 34: luna.plugin.v1.Host.Emit:output_type -> luna.plugin.v1.Empty
-	24, // 35: luna.plugin.v1.Host.Osc:output_type -> luna.plugin.v1.OscReply
-	26, // 36: luna.plugin.v1.Host.Hr:output_type -> luna.plugin.v1.HrReply
-	20, // [20:37] is the sub-list for method output_type
-	3,  // [3:20] is the sub-list for method input_type
+	28, // 20: luna.plugin.v1.Host.Spotify:input_type -> luna.plugin.v1.SpotifyRequest
+	30, // 21: luna.plugin.v1.Host.Translate:input_type -> luna.plugin.v1.TranslateRequest
+	2,  // 22: luna.plugin.v1.Host.Hello:output_type -> luna.plugin.v1.HelloReply
+	4,  // 23: luna.plugin.v1.Host.Subscribe:output_type -> luna.plugin.v1.Event
+	5,  // 24: luna.plugin.v1.Host.Commands:output_type -> luna.plugin.v1.Command
+	0,  // 25: luna.plugin.v1.Host.ChatSend:output_type -> luna.plugin.v1.Empty
+	0,  // 26: luna.plugin.v1.Host.Mod:output_type -> luna.plugin.v1.Empty
+	10, // 27: luna.plugin.v1.Host.Twitch:output_type -> luna.plugin.v1.TwitchReply
+	12, // 28: luna.plugin.v1.Host.Viewer:output_type -> luna.plugin.v1.ViewerReply
+	15, // 29: luna.plugin.v1.Host.StoreGet:output_type -> luna.plugin.v1.StoreValue
+	0,  // 30: luna.plugin.v1.Host.StoreSet:output_type -> luna.plugin.v1.Empty
+	0,  // 31: luna.plugin.v1.Host.StoreDelete:output_type -> luna.plugin.v1.Empty
+	18, // 32: luna.plugin.v1.Host.StoreIncr:output_type -> luna.plugin.v1.StoreIncrReply
+	20, // 33: luna.plugin.v1.Host.StoreKeys:output_type -> luna.plugin.v1.StoreKeysReply
+	0,  // 34: luna.plugin.v1.Host.StoreBatch:output_type -> luna.plugin.v1.Empty
+	0,  // 35: luna.plugin.v1.Host.Log:output_type -> luna.plugin.v1.Empty
+	0,  // 36: luna.plugin.v1.Host.Emit:output_type -> luna.plugin.v1.Empty
+	24, // 37: luna.plugin.v1.Host.Osc:output_type -> luna.plugin.v1.OscReply
+	26, // 38: luna.plugin.v1.Host.Hr:output_type -> luna.plugin.v1.HrReply
+	29, // 39: luna.plugin.v1.Host.Spotify:output_type -> luna.plugin.v1.SpotifyReply
+	31, // 40: luna.plugin.v1.Host.Translate:output_type -> luna.plugin.v1.TranslateReply
+	22, // [22:41] is the sub-list for method output_type
+	3,  // [3:22] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name
 	3,  // [3:3] is the sub-list for extension extendee
 	0,  // [0:3] is the sub-list for field type_name
@@ -1839,7 +2070,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -26,9 +26,9 @@ const usageText = `usage: luna [--config <dir>] <command>
   events sessions | replay <n> [--speed N]
                         list recorded streams, replay one as simulated events
   reload                re-read config; an invalid file keeps the last good one
-  auth login [broadcaster|bot]
-  auth status | logout [broadcaster|bot]
-                        Twitch logins; the bot account is optional
+  auth login [broadcaster|bot|spotify|deepl]
+  auth status | logout [broadcaster|bot|spotify|deepl]
+                        Twitch logins (the bot account is optional), Spotify and DeepL
   perms show | set <user> <rank> | check <user> <capability>
                         ranks: viewer, moderator, luna-mod, head-mod
   chat say <text>       send a chat message through the output guard
@@ -38,7 +38,8 @@ const usageText = `usage: luna [--config <dir>] <command>
   config show [key] | get <key> | set <key> <value> | edit | validate
   capsule install [--yes] <folder|file.capsule|name>
                         built in: core (Essentials, Moderation, Events, Shoutouts),
-                        points, giveaways, stream, avatar, hrc, games, polls, queue
+                        points, giveaways, stream, avatar, hrc, games, polls, queue,
+                        songs, access
   mod timeline | undo <id>
                         moderation actions, with undo (also: luna core --help)
   capsule list | enable | disable | restart | logs | inspect <name>

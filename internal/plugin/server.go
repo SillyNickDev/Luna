@@ -26,13 +26,15 @@ import (
 
 // Host is what plugins can reach, shared by every capsule's server.
 type Host struct {
-	Bus     *bus.Bus
-	Publish func(event.Event)
-	Store   *store.Store
-	Guard   *guard.Guard
-	Twitch  Twitch // nil while Luna runs without Twitch
-	OSC     OSC    // nil while the OSC integration is off
-	HR      *HR
+	Bus        *bus.Bus
+	Publish    func(event.Event)
+	Store      *store.Store
+	Guard      *guard.Guard
+	Twitch     Twitch     // nil while Luna runs without Twitch
+	OSC        OSC        // nil while the OSC integration is off
+	Spotify    Spotify    // nil until Spotify is logged in
+	Translator Translator // nil until DeepL is set up
+	HR         *HR
 
 	mu      sync.Mutex
 	plugins map[string]*server

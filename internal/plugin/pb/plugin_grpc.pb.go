@@ -40,6 +40,8 @@ const (
 	Host_Emit_FullMethodName        = "/luna.plugin.v1.Host/Emit"
 	Host_Osc_FullMethodName         = "/luna.plugin.v1.Host/Osc"
 	Host_Hr_FullMethodName          = "/luna.plugin.v1.Host/Hr"
+	Host_Spotify_FullMethodName     = "/luna.plugin.v1.Host/Spotify"
+	Host_Translate_FullMethodName   = "/luna.plugin.v1.Host/Translate"
 )
 
 // HostClient is the client API for Host service.
@@ -77,6 +79,11 @@ type HostClient interface {
 	Osc(ctx context.Context, in *OscRequest, opts ...grpc.CallOption) (*OscReply, error)
 	// Hr is the latest heart rate and recent history; needs hr.update in [permissions].events.
 	Hr(ctx context.Context, in *HrRequest, opts ...grpc.CallOption) (*HrReply, error)
+	// Spotify reaches the streamer's Spotify through Luna; needs [permissions].spotify: "read"
+	// (find, playing, in_playlist) or "control" (queue, skip).
+	Spotify(ctx context.Context, in *SpotifyRequest, opts ...grpc.CallOption) (*SpotifyReply, error)
+	// Translate translates text with the streamer's DeepL key; needs translate = true.
+	Translate(ctx context.Context, in *TranslateRequest, opts ...grpc.CallOption) (*TranslateReply, error)
 }
 
 type hostClient struct {
@@ -269,6 +276,26 @@ func (c *hostClient) Hr(ctx context.Context, in *HrRequest, opts ...grpc.CallOpt
 	return out, nil
 }
 
+func (c *hostClient) Spotify(ctx context.Context, in *SpotifyRequest, opts ...grpc.CallOption) (*SpotifyReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SpotifyReply)
+	err := c.cc.Invoke(ctx, Host_Spotify_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostClient) Translate(ctx context.Context, in *TranslateRequest, opts ...grpc.CallOption) (*TranslateReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TranslateReply)
+	err := c.cc.Invoke(ctx, Host_Translate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HostServer is the server API for Host service.
 // All implementations must embed UnimplementedHostServer
 // for forward compatibility.
@@ -304,6 +331,11 @@ type HostServer interface {
 	Osc(context.Context, *OscRequest) (*OscReply, error)
 	// Hr is the latest heart rate and recent history; needs hr.update in [permissions].events.
 	Hr(context.Context, *HrRequest) (*HrReply, error)
+	// Spotify reaches the streamer's Spotify through Luna; needs [permissions].spotify: "read"
+	// (find, playing, in_playlist) or "control" (queue, skip).
+	Spotify(context.Context, *SpotifyRequest) (*SpotifyReply, error)
+	// Translate translates text with the streamer's DeepL key; needs translate = true.
+	Translate(context.Context, *TranslateRequest) (*TranslateReply, error)
 	mustEmbedUnimplementedHostServer()
 }
 
@@ -364,6 +396,12 @@ func (UnimplementedHostServer) Osc(context.Context, *OscRequest) (*OscReply, err
 }
 func (UnimplementedHostServer) Hr(context.Context, *HrRequest) (*HrReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method Hr not implemented")
+}
+func (UnimplementedHostServer) Spotify(context.Context, *SpotifyRequest) (*SpotifyReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Spotify not implemented")
+}
+func (UnimplementedHostServer) Translate(context.Context, *TranslateRequest) (*TranslateReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Translate not implemented")
 }
 func (UnimplementedHostServer) mustEmbedUnimplementedHostServer() {}
 func (UnimplementedHostServer) testEmbeddedByValue()              {}
@@ -674,6 +712,42 @@ func _Host_Hr_Handler(srv interface{}, ctx context.Context, dec func(interface{}
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Host_Spotify_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SpotifyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).Spotify(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_Spotify_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).Spotify(ctx, req.(*SpotifyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Host_Translate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TranslateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServer).Translate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Host_Translate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServer).Translate(ctx, req.(*TranslateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Host_ServiceDesc is the grpc.ServiceDesc for Host service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -740,6 +814,14 @@ var Host_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Hr",
 			Handler:    _Host_Hr_Handler,
+		},
+		{
+			MethodName: "Spotify",
+			Handler:    _Host_Spotify_Handler,
+		},
+		{
+			MethodName: "Translate",
+			Handler:    _Host_Translate_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

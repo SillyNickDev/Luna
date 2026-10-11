@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"time"
 
 	"luna/internal/config"
+	"luna/internal/deepl"
 	"luna/internal/secrets"
+	"luna/internal/spotify"
 	"luna/internal/twitch"
 )
 
@@ -21,11 +24,17 @@ func auth(p paths, sub string, rest []string) error {
 	if err != nil {
 		return err
 	}
+	if len(rest) == 1 && rest[0] == "spotify" {
+		return spotifyAuth(p, cfg, sub)
+	}
+	if len(rest) == 1 && rest[0] == "deepl" {
+		return deeplAuth(p, sub)
+	}
 	which := accounts
 	if len(rest) == 1 && twitch.Scopes[rest[0]] != nil {
 		which = rest[:1]
 	} else if len(rest) > 0 {
-		return fmt.Errorf("unknown account %q (broadcaster or bot)", strings.Join(rest, " "))
+		return fmt.Errorf("unknown account %q (broadcaster, bot, spotify or deepl)", strings.Join(rest, " "))
 	}
 	store := secrets.Open(p.data)
 	ctx := context.Background()
@@ -92,6 +101,70 @@ func auth(p paths, sub string, rest []string) error {
 		}
 	default:
 		return fmt.Errorf("unknown auth command %q (login, status, logout)", sub)
+	}
+	return nil
+}
+
+// spotifyAuth is luna auth login|status|logout spotify.
+func spotifyAuth(p paths, cfg *config.Config, sub string) error {
+	store := secrets.Open(p.data)
+	switch sub {
+	case "login":
+		t, err := spotify.Login(context.Background(), cfg.Spotify.ClientID, func(u string) {
+			fmt.Printf("Open this link and allow Luna (it waits up to 5 minutes):\n%s\n", u)
+			exec.Command("xdg-open", u).Start() // best effort; the link above always works
+		})
+		if err != nil {
+			return err
+		}
+		if err := spotify.SaveToken(store, t); err != nil {
+			return err
+		}
+		fmt.Println("Logged in to Spotify. Restart `luna run` to connect.")
+	case "status":
+		t, err := spotify.LoadToken(store)
+		if err != nil {
+			fmt.Printf("%-12s not logged in\n", "spotify:")
+			return nil
+		}
+		fmt.Printf("%-12s logged in, scopes %s\n", "spotify:", strings.Join(t.Scopes, " "))
+	case "logout":
+		return store.Delete("spotify")
+	default:
+		return errors.New("usage: luna auth login|status|logout spotify")
+	}
+	return nil
+}
+
+// deeplAuth is luna auth login|status|logout deepl: the API key, kept like a login.
+func deeplAuth(p paths, sub string) error {
+	store := secrets.Open(p.data)
+	switch sub {
+	case "login":
+		fmt.Print("Paste your DeepL API key (from deepl.com/your-account/keys; it won't show): ")
+		key, err := readSecret()
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if _, _, err := deepl.Translate(ctx, key, "hello", "DE"); err != nil {
+			return fmt.Errorf("that key doesn't work: %w", err)
+		}
+		if err := store.Set("deepl", []byte(key)); err != nil {
+			return err
+		}
+		fmt.Println("DeepL key saved and working. Restart `luna run` to use it.")
+	case "status":
+		if _, err := store.Get("deepl"); err != nil {
+			fmt.Printf("%-12s no key\n", "deepl:")
+		} else {
+			fmt.Printf("%-12s key saved\n", "deepl:")
+		}
+	case "logout":
+		return store.Delete("deepl")
+	default:
+		return errors.New("usage: luna auth login|status|logout deepl")
 	}
 	return nil
 }

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -160,4 +162,64 @@ func (s *server) Hr(_ context.Context, r *pb.HrRequest) (*pb.HrReply, error) {
 		}
 	}
 	return out, nil
+}
+
+// Spotify is the streamer's Spotify, as plugins reach it.
+type Spotify interface {
+	Call(ctx context.Context, call string, args []byte) (any, error)
+}
+
+var spotifyCalls = map[string]string{"find": "read", "playing": "read", "in_playlist": "read", "queue": "control", "skip": "control"}
+
+func (s *server) Spotify(ctx context.Context, r *pb.SpotifyRequest) (*pb.SpotifyReply, error) {
+	need, ok := spotifyCalls[r.Call]
+	switch {
+	case !ok:
+		return nil, status.Errorf(codes.InvalidArgument, "unknown spotify call %q", r.Call)
+	case !slices.Contains(s.p.Manifest.Permissions.Spotify, need):
+		return nil, denied(fmt.Sprintf("%q to [permissions].spotify", need))
+	case len(r.ArgsJson) > 4<<10 || len(r.ArgsJson) > 0 && !json.Valid(r.ArgsJson):
+		return nil, status.Error(codes.InvalidArgument, "spotify call arguments must be a JSON object under 4 KiB")
+	case s.h.Spotify == nil:
+		return nil, status.Error(codes.Unavailable, "Spotify isn't connected: set [spotify] client_id, run luna auth login spotify, and restart luna")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if need == "control" && (r.Simulated || s.p.Dev) {
+		fmt.Fprintf(s.p.Log, "[sim spotify] %s %s\n", r.Call, r.ArgsJson)
+		return &pb.SpotifyReply{DataJson: []byte("null")}, nil
+	}
+	v, err := s.h.Spotify.Call(ctx, r.Call, r.ArgsJson)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+	b, _ := json.Marshal(v)
+	return &pb.SpotifyReply{DataJson: b}, nil
+}
+
+// Translator translates with the streamer's DeepL key, which stays in the daemon.
+type Translator interface {
+	Translate(ctx context.Context, text, target string) (out, source string, err error)
+}
+
+var langRe = regexp.MustCompile(`^[A-Za-z]{2}(-[A-Za-z]{2,4})?$`)
+
+func (s *server) Translate(ctx context.Context, r *pb.TranslateRequest) (*pb.TranslateReply, error) {
+	switch {
+	case !s.p.Manifest.Permissions.Translate:
+		return nil, denied("translate = true to [permissions]")
+	case r.Text == "" || utf8.RuneCountInString(r.Text) > 1000:
+		return nil, status.Error(codes.InvalidArgument, "translate 1 to 1000 characters at a time")
+	case !langRe.MatchString(r.Target):
+		return nil, status.Errorf(codes.InvalidArgument, "%q isn't a language code like EN or PT-BR", r.Target)
+	case s.h.Translator == nil:
+		return nil, status.Error(codes.Unavailable, "translation isn't set up: run luna auth login deepl, then restart luna")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	out, src, err := s.h.Translator.Translate(ctx, r.Text, r.Target)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+	return &pb.TranslateReply{Text: out, Source: src}, nil
 }
