@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,6 +66,15 @@ func auth(p paths, sub string, rest []string) error {
 			}
 			fmt.Printf("%-12s %s (id %s), expires %s\n%-12s %s\n", a+":", t.Login, t.UserID,
 				t.Expiry.Local().Format(time.RFC1123), "", strings.Join(t.Scopes, " "))
+			var missing []string
+			for _, sc := range twitch.Scopes[a] {
+				if !slices.Contains(t.Scopes, sc) {
+					missing = append(missing, sc)
+				}
+			}
+			if len(missing) > 0 {
+				fmt.Printf("%-12s missing %s: run luna auth login %s\n", "", strings.Join(missing, " "), a)
+			}
 		}
 	case "logout":
 		for _, a := range which {

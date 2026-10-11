@@ -82,6 +82,16 @@ class _Twitch:
         self.channels = {}  # id ("" = this channel) → {"game", "title", ...}
         self.stream = {"live": False}
         self.follows = {}   # user id → "2025-03-01T12:00:00Z"
+        self.categories = []  # [{"id", "name"}]
+        self.schedule = []    # [{"start", "end", "title", "category"}]
+        self.live = {}        # login → {"login", "game", "viewers", ...} for streams()
+        self.ads = {"next_ad_at": None, "duration_s": 0, "snooze_count": 0}
+        self.writes = []      # ("set_channel", {"title": ...}), ("clip", {}), ("raid", {"to_id": ...})
+
+
+_TWITCH_PERM = {"user": "read", "follow": "read", "channel": "read", "stream": "read", "categories": "read",
+                "schedule": "read", "streams": "read", "set_channel": "edit", "clip": "clips", "marker": "markers",
+                "ads": "ads", "snooze": "ads", "raid": "raid", "unraid": "raid"}
 
 
 class Result:
@@ -126,11 +136,28 @@ class _Fake:
                   "shield": lambda: (req["on"],)}.get(action, lambda: (req["user_id"],))()
         self.h.mod.actions.append((action, *detail))
 
-    def twitch(self, call, user):
-        self._need("twitch", "read", '"read" to [permissions].twitch')
+    def twitch(self, call, user, args=None, simulated=False):
+        need = _TWITCH_PERM.get(call)
+        if need is None:
+            raise errors.LunaError(f"unknown twitch call {call!r}")
+        self._need("twitch", need, f'"{need}" to [permissions].twitch')
         tw = self.h.twitch
+        args = args or {}
         v = None
-        if call == "user":
+        if need != "read" and call != "ads":
+            if not simulated:
+                tw.writes.append((call, args))
+            v = {"clip": {"id": "clip1", "url": "https://clips.twitch.tv/clip1", "edit_url": ""},
+                 "marker": {"id": "m1", "position_s": 0}, "snooze": tw.ads}.get(call)
+        elif call == "categories":
+            v = [c for c in tw.categories if args.get("query", "").lower() in c["name"].lower()]
+        elif call == "schedule":
+            v = tw.schedule
+        elif call == "streams":
+            v = [tw.live[l] for l in args.get("logins", []) if l in tw.live]
+        elif call == "ads":
+            v = tw.ads
+        elif call == "user":
             v = next((u for u in tw.users.values()
                       if user.lower() in (str(u.get("login", "")).lower(), str(u.get("id", "")))), None)
         elif call == "channel":

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +75,9 @@ func (c *Client) helix(ctx context.Context, method, path string, body, out any) 
 		err = doJSON(req, out)
 		var ae *APIError
 		if errors.As(err, &ae) && ae.Status == 401 {
+			if strings.Contains(strings.ToLower(ae.Message), "scope") { // the token is fine, just narrower than this call needs
+				return fmt.Errorf("twitch: %s; log in again to grant it: luna auth login", ae.Message)
+			}
 			if attempt == 0 {
 				continue
 			}

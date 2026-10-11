@@ -99,8 +99,13 @@ message ModRequest {
 }
 
 message TwitchRequest {
-  string call = 1; // user (by login or id), channel, stream (empty user = this channel), follow (user id)
+  // Reads ("read"): user (by login or id), channel, stream (empty user = this channel), follow (user id),
+  // categories {query}, schedule, streams {logins}. Writes, each its own permission: set_channel {title, game_id}
+  // ("edit"), clip ("clips"), marker {description} ("markers"), ads and snooze ("ads"), raid {to_id} and unraid ("raid").
+  string call = 1;
   string user = 2;
+  bytes args_json = 3;
+  bool simulated = 4; // a write answering a simulated event: printed, never sent
 }
 
 message TwitchReply {

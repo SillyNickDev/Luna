@@ -64,6 +64,7 @@ func ChannelSubs(b string) []Sub {
 		{"channel.update", "2", map[string]string{"broadcaster_user_id": b}},
 		{"channel.subscription.gift", "1", map[string]string{"broadcaster_user_id": b}},
 		{"channel.subscription.message", "1", map[string]string{"broadcaster_user_id": b}},
+		{"channel.ad_break.begin", "1", map[string]string{"broadcaster_user_id": b}},
 	}
 }
 
@@ -228,6 +229,8 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 		Title        string `json:"title"`
 		CategoryName string `json:"category_name"`
 		StartedAt    string `json:"started_at"`
+		DurationS    int    `json:"duration_seconds"`
+		IsAutomatic  bool   `json:"is_automatic"`
 	}
 	if err := json.Unmarshal(raw, &e); err != nil {
 		return event.Event{}, err
@@ -296,6 +299,8 @@ func toEvent(subType string, raw json.RawMessage) (event.Event, error) {
 		typ, data = "twitch.channel.redeem", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName), "reward": e.Reward.Title, "input": e.UserInput}
 	case "channel.moderator.add":
 		typ, data = "twitch.channel.moderator.add", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName)}
+	case "channel.ad_break.begin":
+		typ, data = "twitch.channel.ad_break", map[string]any{"duration_s": e.DurationS, "automatic": e.IsAutomatic}
 	case "channel.moderator.remove":
 		typ, data = "twitch.channel.moderator.remove", map[string]any{"user": user(e.UserID, e.UserLogin, e.UserName)}
 	default:

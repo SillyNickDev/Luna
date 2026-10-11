@@ -139,7 +139,7 @@ func (m *Manifest) validate() error {
 	}{
 		{"chat", m.Permissions.Chat, chatPerms},
 		{"mod", m.Permissions.Mod, modPerms},
-		{"twitch", m.Permissions.Twitch, []string{"read"}},
+		{"twitch", m.Permissions.Twitch, twitchPerms},
 	} {
 		for _, c := range group.have {
 			if !slices.Contains(group.all, c) {
@@ -249,6 +249,11 @@ func (m *Manifest) EffectiveConfig(overrides map[string]any) ([]byte, error) {
 var (
 	chatPerms = []string{"send", "announce", "whisper"}
 	modPerms  = []string{"timeout", "ban", "delete", "warn", "shield", "shoutout"}
+	// twitchPerms: reading public info, then each kind of change to the channel.
+	twitchPerms = []string{"read", "edit", "clips", "markers", "ads", "raid"}
+	twitchWords = map[string]string{"read": "reads public Twitch info: users, your channel and stream, who follows",
+		"edit": "changes your stream title and category", "clips": "makes clips of your stream",
+		"markers": "adds VOD markers", "ads": "reads your ad schedule and snoozes ads", "raid": "starts and cancels raids"}
 	// modWords say what each [permissions].mod entry lets the plugin do, for approval.
 	modWords = map[string]string{"timeout": "time viewers out", "ban": "ban and unban viewers",
 		"delete": "delete chat messages", "warn": "send Twitch warnings", "shield": "turn Shield Mode on and off",
@@ -283,8 +288,8 @@ func (m *Manifest) Describe() string {
 	for _, p := range m.Permissions.Mod {
 		fmt.Fprintf(&b, "  moderates: can %s\n", modWords[p])
 	}
-	if len(m.Permissions.Twitch) > 0 {
-		b.WriteString("  reads public Twitch info: users, your channel and stream, who follows\n")
+	for _, p := range m.Permissions.Twitch {
+		fmt.Fprintf(&b, "  %s\n", twitchWords[p])
 	}
 	if m.Permissions.Viewers {
 		b.WriteString("  reads viewer profiles: first and last seen, messages, watch time, streaks\n")

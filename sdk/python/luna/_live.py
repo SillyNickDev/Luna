@@ -93,8 +93,9 @@ class Transport:
     def mod(self, req):
         self._rpc(self.stub.Mod, pb.ModRequest(**req))
 
-    def twitch(self, call, user):
-        return self._rpc(self.stub.Twitch, pb.TwitchRequest(call=call, user=user)).data_json
+    def twitch(self, call, user, args=None, simulated=False):
+        return self._rpc(self.stub.Twitch, pb.TwitchRequest(call=call, user=user, simulated=simulated,
+                                                            args_json=json.dumps(args).encode() if args else b"")).data_json
 
     def viewer(self, user):
         return self._rpc(self.stub.Viewer, pb.ViewerRequest(user=user)).data_json

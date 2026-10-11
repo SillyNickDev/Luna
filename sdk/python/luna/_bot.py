@@ -265,8 +265,11 @@ class _Twitch:
     def __init__(self, bot):
         self._bot = bot
 
-    def _get(self, call, user=""):
-        v = json.loads(self._bot._t.twitch(call, user))
+    def _get(self, call, user="", **args):
+        ev = _current.get()
+        v = json.loads(self._bot._t.twitch(call, user, args, bool(ev and ev.simulated)))
+        if isinstance(v, list):
+            return [Obj(x) if isinstance(x, dict) else x for x in v]
         return Obj(v) if isinstance(v, dict) else v
 
     def user(self, login_or_id):
@@ -285,6 +288,46 @@ class _Twitch:
         """When they followed this channel, or None."""
         f = self._get("follow", _uid(user))
         return _time(f.followed_at) if f else None
+
+    def categories(self, query):
+        """Twitch categories matching query, best first: [{id, name}]."""
+        return self._get("categories", query=query) or []
+
+    def schedule(self):
+        """This channel's upcoming schedule: [{start, end, title, category}]."""
+        return self._get("schedule") or []
+
+    def streams(self, logins):
+        """Which of these channels are live: [{user_id, login, name, game, title, viewers}]."""
+        return self._get("streams", logins=list(logins)) or []
+
+    def set_channel(self, title="", game_id=""):
+        """Change the title and/or category (an id from categories). Needs "edit"."""
+        self._get("set_channel", title=title, game_id=game_id)
+
+    def clip(self):
+        """Clip the last ~30 s of the live stream: {id, url, edit_url}. Needs "clips"."""
+        return self._get("clip")
+
+    def marker(self, description=""):
+        """Drop a VOD marker: {id, position_s}. Needs "markers"."""
+        return self._get("marker", description=description)
+
+    def ads(self):
+        """The ad schedule: {next_ad_at, last_ad_at, duration_s, snooze_count, preroll_free_s}. Needs "ads"."""
+        return self._get("ads")
+
+    def snooze_ad(self):
+        """Push the next ad back 5 minutes. Needs "ads"."""
+        return self._get("snooze")
+
+    def raid(self, to_id):
+        """Raid the channel with this user ID. Needs "raid"."""
+        self._get("raid", to_id=str(to_id))
+
+    def unraid(self):
+        """Cancel a pending raid. Needs "raid"."""
+        self._get("unraid")
 
 
 class _Viewers:

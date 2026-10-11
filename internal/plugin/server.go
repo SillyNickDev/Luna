@@ -39,8 +39,8 @@ type Host struct {
 // Twitch is what plugins may ask of Twitch, always as the channel and through the core.
 type Twitch interface {
 	Mod(ctx context.Context, r *pb.ModRequest) error
-	// Lookup answers a TwitchRequest call; nil means not found.
-	Lookup(ctx context.Context, call, user string) (any, error)
+	// Lookup answers a TwitchRequest call; nil means not found. args is the call's JSON object, if any.
+	Lookup(ctx context.Context, call, user string, args []byte) (any, error)
 }
 
 // Plugin is one capsule as the host sees it.
@@ -315,33 +315,66 @@ func (s *server) Mod(ctx context.Context, r *pb.ModRequest) (*pb.Empty, error) {
 	return &pb.Empty{}, twitchErr(err)
 }
 
+// twitchCalls maps each Twitch call to the [permissions].twitch value it needs.
+var twitchCalls = map[string]string{
+	"user": "read", "follow": "read", "channel": "read", "stream": "read", "categories": "read", "schedule": "read",
+	"streams": "read", "set_channel": "edit", "clip": "clips", "marker": "markers", "ads": "ads", "snooze": "ads",
+	"raid": "raid", "unraid": "raid",
+}
+
 func (s *server) Twitch(ctx context.Context, r *pb.TwitchRequest) (*pb.TwitchReply, error) {
-	if !slices.Contains(s.p.Manifest.Permissions.Twitch, "read") {
-		return nil, denied(`"read" to [permissions].twitch`)
-	}
-	switch r.Call {
-	case "user", "follow":
-		if r.User == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "%s needs user", r.Call)
-		}
-	case "channel", "stream":
-	default:
+	need, ok := twitchCalls[r.Call]
+	if !ok {
 		return nil, status.Errorf(codes.InvalidArgument, "unknown twitch call %q", r.Call)
+	}
+	if !slices.Contains(s.p.Manifest.Permissions.Twitch, need) {
+		return nil, denied(fmt.Sprintf("%q to [permissions].twitch", need))
+	}
+	if (r.Call == "user" || r.Call == "follow") && r.User == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "%s needs user", r.Call)
+	}
+	if len(r.ArgsJson) > 4<<10 {
+		return nil, status.Error(codes.InvalidArgument, "twitch call arguments over 4 KiB")
+	}
+	if len(r.ArgsJson) > 0 && !json.Valid(r.ArgsJson) {
+		return nil, status.Error(codes.InvalidArgument, "twitch call arguments must be a JSON object")
 	}
 	if s.h.Twitch == nil {
 		return nil, status.Error(codes.Unavailable, guard.ErrOffline.Error())
 	}
-	if strings.HasPrefix(r.User, "sim-") { // simulated viewers don't exist on Twitch
+	if strings.HasPrefix(r.User, "sim-") && need == "read" { // simulated viewers don't exist on Twitch
 		return &pb.TwitchReply{DataJson: []byte("null")}, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	v, err := s.h.Twitch.Lookup(ctx, r.Call, r.User)
+	var v any
+	var err error
+	if need == "read" || r.Call == "ads" {
+		v, err = s.h.Twitch.Lookup(ctx, r.Call, r.User, r.ArgsJson)
+	} else {
+		desc := strings.TrimSpace("twitch " + r.Call + " " + string(r.ArgsJson))
+		fmt.Fprintf(s.p.Log, "luna: %s\n", desc)
+		sim := r.Simulated || s.p.Dev
+		err = s.h.Guard.Mod(ctx, desc, sim, func(ctx context.Context) error {
+			v, err = s.h.Twitch.Lookup(ctx, r.Call, r.User, r.ArgsJson)
+			return err
+		})
+		if sim {
+			v = simulatedWrites[r.Call]
+		}
+	}
 	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	b, _ := json.Marshal(v)
 	return &pb.TwitchReply{DataJson: b}, nil
+}
+
+// simulatedWrites stand in for Twitch's answers, so a plugin's flow runs to the end in the simulator.
+var simulatedWrites = map[string]any{
+	"clip":   map[string]string{"id": "simulated", "url": "https://clips.twitch.tv/simulated", "edit_url": ""},
+	"marker": map[string]any{"id": "simulated", "position_s": 0},
+	"snooze": map[string]any{"duration_s": 0, "snooze_count": 0, "preroll_free_s": 0},
 }
 
 func (s *server) Viewer(_ context.Context, r *pb.ViewerRequest) (*pb.ViewerReply, error) {

@@ -26,6 +26,7 @@ var simList = []struct{ name, typ, usage string }{
 	{"online", "twitch.stream.online", ""},
 	{"offline", "twitch.stream.offline", ""},
 	{"update", "twitch.channel.update", `"Game" [title]`},
+	{"ad", "twitch.channel.ad_break", "[--seconds N]"},
 	{"hr", "hr.update", "<bpm>"},
 }
 
@@ -53,6 +54,7 @@ func simEvent(args []string) (event.Event, error) {
 	viewers := fs.Int("viewers", 10, "")
 	months := fs.Int("months", 3, "")
 	count := fs.Int("count", 5, "")
+	seconds := fs.Int("seconds", 90, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return event.Event{}, err
 	}
@@ -112,6 +114,11 @@ func simEvent(args []string) (event.Event, error) {
 			return event.Event{}, errors.New(`usage: luna sim update "Game" [title]`)
 		}
 		data = map[string]any{"game": pos[0], "title": strings.Join(pos[1:], " ")}
+	case "ad":
+		if *seconds < 1 || *seconds > 180 {
+			return event.Event{}, errors.New("--seconds must be 1-180")
+		}
+		data = map[string]any{"duration_s": *seconds, "automatic": false}
 	case "hr":
 		bpm, err := strconv.Atoi(strings.Join(pos, ""))
 		if err != nil || bpm < 20 || bpm > 250 {

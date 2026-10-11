@@ -32,6 +32,8 @@ var Scopes = map[string][]string{
 		"moderator:manage:banned_users", "moderator:manage:chat_messages", "moderator:manage:warnings",
 		"moderator:manage:shield_mode", "moderator:manage:shoutouts", "moderator:manage:announcements",
 		"user:manage:whispers",
+		// Stream tools: title and category, markers, clips, ads, raids
+		"channel:manage:broadcast", "clips:edit", "channel:read:ads", "channel:manage:ads", "channel:manage:raids",
 	},
 	"bot": {"user:read:chat", "user:write:chat", "user:bot"},
 }

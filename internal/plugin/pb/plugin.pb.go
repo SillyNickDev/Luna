@@ -615,9 +615,14 @@ func (x *ModRequest) GetSimulated() bool {
 }
 
 type TwitchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Call          string                 `protobuf:"bytes,1,opt,name=call,proto3" json:"call,omitempty"` // user (by login or id), channel, stream (empty user = this channel), follow (user id)
-	User          string                 `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Reads ("read"): user (by login or id), channel, stream (empty user = this channel), follow (user id),
+	// categories {query}, schedule, streams {logins}. Writes, each its own permission: set_channel {title, game_id}
+	// ("edit"), clip ("clips"), marker {description} ("markers"), ads and snooze ("ads"), raid {to_id} and unraid ("raid").
+	Call          string `protobuf:"bytes,1,opt,name=call,proto3" json:"call,omitempty"`
+	User          string `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"`
+	ArgsJson      []byte `protobuf:"bytes,3,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`
+	Simulated     bool   `protobuf:"varint,4,opt,name=simulated,proto3" json:"simulated,omitempty"` // a write answering a simulated event: printed, never sent
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -664,6 +669,20 @@ func (x *TwitchRequest) GetUser() string {
 		return x.User
 	}
 	return ""
+}
+
+func (x *TwitchRequest) GetArgsJson() []byte {
+	if x != nil {
+		return x.ArgsJson
+	}
+	return nil
+}
+
+func (x *TwitchRequest) GetSimulated() bool {
+	if x != nil {
+		return x.Simulated
+	}
+	return false
 }
 
 type TwitchReply struct {
@@ -1345,10 +1364,12 @@ const file_plugin_proto_rawDesc = "" +
 	"\n" +
 	"message_id\x18\x05 \x01(\tR\tmessageId\x12\x0e\n" +
 	"\x02on\x18\x06 \x01(\bR\x02on\x12\x1c\n" +
-	"\tsimulated\x18\a \x01(\bR\tsimulated\"7\n" +
+	"\tsimulated\x18\a \x01(\bR\tsimulated\"r\n" +
 	"\rTwitchRequest\x12\x12\n" +
 	"\x04call\x18\x01 \x01(\tR\x04call\x12\x12\n" +
-	"\x04user\x18\x02 \x01(\tR\x04user\"*\n" +
+	"\x04user\x18\x02 \x01(\tR\x04user\x12\x1b\n" +
+	"\targs_json\x18\x03 \x01(\fR\bargsJson\x12\x1c\n" +
+	"\tsimulated\x18\x04 \x01(\bR\tsimulated\"*\n" +
 	"\vTwitchReply\x12\x1b\n" +
 	"\tdata_json\x18\x01 \x01(\fR\bdataJson\"#\n" +
 	"\rViewerRequest\x12\x12\n" +

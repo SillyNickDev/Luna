@@ -105,6 +105,18 @@ class SDKTest(unittest.TestCase):
         reply = t.chat.messages[-1]
         self.assertTrue(reply["reply_to"].startswith("msg-"), reply)
 
+    def test_twitch_writes(self):
+        t = harness(main)
+        t.twitch.categories = [{"id": "3", "name": "VRChat"}]
+        self.assertEqual(main.bot.twitch.categories("vr")[0].name, "VRChat")
+        with self.assertRaises(PermissionDenied) as e:
+            main.bot.twitch.clip()  # the example only asks for read
+        self.assertIn('"clips" to [permissions].twitch', str(e.exception))
+        t.perms = dict(t.perms, twitch=["read", "edit", "clips"])
+        self.assertEqual(main.bot.twitch.clip().url, "https://clips.twitch.tv/clip1")
+        main.bot.twitch.set_channel(title="New title")
+        self.assertEqual(t.twitch.writes, [("clip", {}), ("set_channel", {"title": "New title", "game_id": ""})])
+
     def test_mod_permission(self):
         t = harness(main)
         t.perms = dict(t.perms, mod=[])

@@ -2,6 +2,7 @@ package twitch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -191,4 +192,206 @@ func (c *Client) sendChat(ctx context.Context, body map[string]string) error {
 		return fmt.Errorf("twitch dropped the message: %s", reason)
 	}
 	return nil
+}
+
+// ---------- stream management (Stream tools) ----------
+
+// SetChannel changes the title and/or category; empty fields stay as they are.
+func (c *Client) SetChannel(ctx context.Context, title, gameID string) error {
+	body := map[string]string{}
+	if title != "" {
+		body["title"] = title
+	}
+	if gameID != "" {
+		body["game_id"] = gameID
+	}
+	return c.helix(ctx, "PATCH", "/channels?"+c.q("broadcaster_id", c.userID), body, nil)
+}
+
+type Category struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (c *Client) SearchCategories(ctx context.Context, query string) ([]Category, error) {
+	var out struct {
+		Data []Category `json:"data"`
+	}
+	err := c.helix(ctx, "GET", "/search/categories?"+c.q("query", query, "first", "10"), nil, &out)
+	return out.Data, err
+}
+
+type Clip struct {
+	ID      string `json:"id"`
+	URL     string `json:"url"`
+	EditURL string `json:"edit_url"`
+}
+
+// Clip captures the last ~30 s of the live stream. Twitch makes it asynchronously, so the
+// link can take a few seconds to work.
+func (c *Client) Clip(ctx context.Context) (*Clip, error) {
+	var out struct {
+		Data []Clip `json:"data"`
+	}
+	if err := c.helix(ctx, "POST", "/clips?"+c.q("broadcaster_id", c.userID), nil, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Data) == 0 {
+		return nil, fmt.Errorf("twitch made no clip")
+	}
+	cl := out.Data[0]
+	cl.URL = "https://clips.twitch.tv/" + cl.ID
+	return &cl, nil
+}
+
+type Marker struct {
+	ID        string `json:"id"`
+	PositionS int    `json:"position_s"`
+}
+
+func (c *Client) Marker(ctx context.Context, description string) (*Marker, error) {
+	var out struct {
+		Data []struct {
+			ID        string `json:"id"`
+			PositionS int    `json:"position_seconds"`
+		} `json:"data"`
+	}
+	if err := c.helix(ctx, "POST", "/streams/markers", map[string]string{"user_id": c.userID, "description": description}, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Data) == 0 {
+		return nil, fmt.Errorf("twitch made no marker")
+	}
+	return &Marker{ID: out.Data[0].ID, PositionS: out.Data[0].PositionS}, nil
+}
+
+type AdSchedule struct {
+	NextAdAt    time.Time `json:"next_ad_at,omitzero"`
+	LastAdAt    time.Time `json:"last_ad_at,omitzero"`
+	DurationS   int       `json:"duration_s"`
+	SnoozeCount int       `json:"snooze_count"`
+	PrerollS    int       `json:"preroll_free_s"`
+}
+
+type adReply struct {
+	Data []struct {
+		NextAdAt    int64 `json:"next_ad_at"` // Unix seconds; 0 when none is scheduled
+		LastAdAt    int64 `json:"last_ad_at"`
+		Duration    int   `json:"duration"`
+		SnoozeCount int   `json:"snooze_count"`
+		Preroll     int   `json:"preroll_free_time"`
+	} `json:"data"`
+}
+
+func (r adReply) schedule() *AdSchedule {
+	if len(r.Data) == 0 {
+		return &AdSchedule{}
+	}
+	d := r.Data[0]
+	s := &AdSchedule{DurationS: d.Duration, SnoozeCount: d.SnoozeCount, PrerollS: d.Preroll}
+	if d.NextAdAt > 0 {
+		s.NextAdAt = time.Unix(d.NextAdAt, 0).UTC()
+	}
+	if d.LastAdAt > 0 {
+		s.LastAdAt = time.Unix(d.LastAdAt, 0).UTC()
+	}
+	return s
+}
+
+func (c *Client) Ads(ctx context.Context) (*AdSchedule, error) {
+	var out adReply
+	err := c.helix(ctx, "GET", "/channels/ads?"+c.q("broadcaster_id", c.userID), nil, &out)
+	return out.schedule(), err
+}
+
+// SnoozeAd pushes the next scheduled ad back 5 minutes (Twitch allows a few per hour).
+func (c *Client) SnoozeAd(ctx context.Context) (*AdSchedule, error) {
+	var out adReply
+	err := c.helix(ctx, "POST", "/channels/ads/schedule/snooze?"+c.q("broadcaster_id", c.userID), nil, &out)
+	return out.schedule(), err
+}
+
+type Segment struct {
+	Start    time.Time `json:"start"`
+	End      time.Time `json:"end,omitzero"`
+	Title    string    `json:"title"`
+	Category string    `json:"category,omitempty"`
+}
+
+// Schedule is the channel's upcoming schedule; empty if it has none.
+func (c *Client) Schedule(ctx context.Context) ([]Segment, error) {
+	var out struct {
+		Data struct {
+			Segments []struct {
+				Start    time.Time  `json:"start_time"`
+				End      time.Time  `json:"end_time"`
+				Title    string     `json:"title"`
+				Canceled *time.Time `json:"canceled_until"`
+				Category *struct {
+					Name string `json:"name"`
+				} `json:"category"`
+			} `json:"segments"`
+		} `json:"data"`
+	}
+	err := c.helix(ctx, "GET", "/schedule?"+c.q("broadcaster_id", c.userID, "first", "5"), nil, &out)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == 404 { // no schedule set up
+		return nil, nil
+	}
+	var segs []Segment
+	for _, s := range out.Data.Segments {
+		if s.Canceled != nil {
+			continue
+		}
+		seg := Segment{Start: s.Start, End: s.End, Title: s.Title}
+		if s.Category != nil {
+			seg.Category = s.Category.Name
+		}
+		segs = append(segs, seg)
+	}
+	return segs, err
+}
+
+type LiveStream struct {
+	UserID  string `json:"user_id"`
+	Login   string `json:"login"`
+	Name    string `json:"name"`
+	Game    string `json:"game"`
+	Title   string `json:"title"`
+	Viewers int    `json:"viewers"`
+}
+
+// Streams lists which of logins (up to 100) are live.
+func (c *Client) Streams(ctx context.Context, logins []string) ([]LiveStream, error) {
+	v := url.Values{}
+	for _, l := range logins[:min(len(logins), 100)] {
+		v.Add("user_login", l)
+	}
+	var out struct {
+		Data []struct {
+			UserID  string `json:"user_id"`
+			Login   string `json:"user_login"`
+			Name    string `json:"user_name"`
+			Game    string `json:"game_name"`
+			Title   string `json:"title"`
+			Viewers int    `json:"viewer_count"`
+		} `json:"data"`
+	}
+	if err := c.helix(ctx, "GET", "/streams?"+v.Encode(), nil, &out); err != nil {
+		return nil, err
+	}
+	var live []LiveStream
+	for _, d := range out.Data {
+		live = append(live, LiveStream(d))
+	}
+	return live, nil
+}
+
+// Raid starts a raid on toID; Twitch counts down 90 s before it goes.
+func (c *Client) Raid(ctx context.Context, toID string) error {
+	return c.helix(ctx, "POST", "/raids?"+c.q("from_broadcaster_id", c.userID, "to_broadcaster_id", toID), nil, nil)
+}
+
+func (c *Client) Unraid(ctx context.Context) error {
+	return c.helix(ctx, "DELETE", "/raids?"+c.q("broadcaster_id", c.userID), nil, nil)
 }

@@ -190,7 +190,19 @@ type Stream struct {
 }
 
 func (t Twitch) get(c *Ctx, call, user string, v any) (bool, error) {
-	r, err := t.b.host.Twitch(c, &pb.TwitchRequest{Call: call, User: user})
+	return t.do(c, call, user, nil, v)
+}
+
+// do makes a Twitch call with args; writes answering a simulated event are only printed.
+func (t Twitch) do(c *Ctx, call, user string, args any, v any) (bool, error) {
+	req := &pb.TwitchRequest{Call: call, User: user, Simulated: c.simulated()}
+	if args != nil {
+		var err error
+		if req.ArgsJson, err = json.Marshal(args); err != nil {
+			return false, err
+		}
+	}
+	r, err := t.b.host.Twitch(c, req)
 	if err != nil {
 		return false, wrap(err)
 	}
@@ -234,6 +246,114 @@ func (t Twitch) FollowedAt(c *Ctx, userID string) (time.Time, error) {
 	}
 	_, err := t.get(c, "follow", userID, &f)
 	return f.At, err
+}
+
+type Category struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// SearchCategories finds Twitch categories (games) matching query, best first.
+func (t Twitch) SearchCategories(c *Ctx, query string) ([]Category, error) {
+	var out []Category
+	_, err := t.do(c, "categories", "", map[string]string{"query": query}, &out)
+	return out, err
+}
+
+type Segment struct {
+	Start    time.Time `json:"start"`
+	End      time.Time `json:"end"`
+	Title    string    `json:"title"`
+	Category string    `json:"category"`
+}
+
+// Schedule is this channel's upcoming Twitch schedule, soonest first; empty if it has none.
+func (t Twitch) Schedule(c *Ctx) ([]Segment, error) {
+	var out []Segment
+	_, err := t.do(c, "schedule", "", nil, &out)
+	return out, err
+}
+
+type LiveStream struct {
+	UserID  string `json:"user_id"`
+	Login   string `json:"login"`
+	Name    string `json:"name"`
+	Game    string `json:"game"`
+	Title   string `json:"title"`
+	Viewers int    `json:"viewers"`
+}
+
+// Streams says which of logins (up to 100) are live right now.
+func (t Twitch) Streams(c *Ctx, logins []string) ([]LiveStream, error) {
+	var out []LiveStream
+	_, err := t.do(c, "streams", "", map[string][]string{"logins": logins}, &out)
+	return out, err
+}
+
+// SetChannel changes this channel's title and/or category (by ID, from SearchCategories);
+// an empty one stays as it is. Needs "edit" in [permissions].twitch.
+func (t Twitch) SetChannel(c *Ctx, title, gameID string) error {
+	_, err := t.do(c, "set_channel", "", map[string]string{"title": title, "game_id": gameID}, nil)
+	return err
+}
+
+type Clip struct {
+	ID      string `json:"id"`
+	URL     string `json:"url"`
+	EditURL string `json:"edit_url"`
+}
+
+// Clip clips the last ~30 s of the live stream. Needs "clips".
+func (t Twitch) Clip(c *Ctx) (*Clip, error) {
+	var out Clip
+	_, err := t.do(c, "clip", "", nil, &out)
+	return &out, err
+}
+
+type Marker struct {
+	ID        string `json:"id"`
+	PositionS int    `json:"position_s"`
+}
+
+// Marker drops a VOD marker with a note. Needs "markers".
+func (t Twitch) Marker(c *Ctx, description string) (*Marker, error) {
+	var out Marker
+	_, err := t.do(c, "marker", "", map[string]string{"description": description}, &out)
+	return &out, err
+}
+
+type AdSchedule struct {
+	NextAdAt    time.Time `json:"next_ad_at"` // zero: none scheduled
+	LastAdAt    time.Time `json:"last_ad_at"`
+	DurationS   int       `json:"duration_s"`
+	SnoozeCount int       `json:"snooze_count"` // snoozes left
+	PrerollS    int       `json:"preroll_free_s"`
+}
+
+// Ads is the channel's ad schedule. Needs "ads".
+func (t Twitch) Ads(c *Ctx) (*AdSchedule, error) {
+	var out AdSchedule
+	_, err := t.do(c, "ads", "", nil, &out)
+	return &out, err
+}
+
+// SnoozeAd pushes the next ad back 5 minutes, if snoozes are left. Needs "ads".
+func (t Twitch) SnoozeAd(c *Ctx) (*AdSchedule, error) {
+	var out AdSchedule
+	_, err := t.do(c, "snooze", "", nil, &out)
+	return &out, err
+}
+
+// Raid starts a raid on the channel with user ID toID (Twitch counts down 90 s). Needs "raid".
+func (t Twitch) Raid(c *Ctx, toID string) error {
+	_, err := t.do(c, "raid", "", map[string]string{"to_id": toID}, nil)
+	return err
+}
+
+// Unraid cancels a pending raid. Needs "raid".
+func (t Twitch) Unraid(c *Ctx) error {
+	_, err := t.do(c, "unraid", "", nil, nil)
+	return err
 }
 
 // Viewers is Luna's shared viewer profile; needs viewers = true.

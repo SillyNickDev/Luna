@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -53,11 +54,50 @@ func (t *twitchHost) Mod(ctx context.Context, r *pb.ModRequest) error {
 	return fmt.Errorf("unknown mod action %q", r.Action)
 }
 
-func (t *twitchHost) Lookup(ctx context.Context, call, user string) (any, error) {
+func (t *twitchHost) Lookup(ctx context.Context, call, user string, raw []byte) (any, error) {
 	if user == "" {
 		user = t.bc.UserID()
 	}
+	var args struct {
+		Query       string   `json:"query"`
+		Logins      []string `json:"logins"`
+		Title       string   `json:"title"`
+		GameID      string   `json:"game_id"`
+		Description string   `json:"description"`
+		ToID        string   `json:"to_id"`
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return nil, fmt.Errorf("%s: %w", call, err)
+		}
+	}
 	switch call {
+	case "categories":
+		return t.bc.SearchCategories(ctx, args.Query)
+	case "schedule":
+		return t.bc.Schedule(ctx)
+	case "streams":
+		return t.bc.Streams(ctx, args.Logins)
+	case "set_channel":
+		if args.Title == "" && args.GameID == "" {
+			return nil, errors.New("set_channel needs a title or game_id")
+		}
+		return nil, t.bc.SetChannel(ctx, args.Title, args.GameID)
+	case "clip":
+		return t.bc.Clip(ctx)
+	case "marker":
+		return t.bc.Marker(ctx, args.Description)
+	case "ads":
+		return t.bc.Ads(ctx)
+	case "snooze":
+		return t.bc.SnoozeAd(ctx)
+	case "raid":
+		if !isID(args.ToID) {
+			return nil, errors.New("raid needs to_id, a channel's user ID")
+		}
+		return nil, t.bc.Raid(ctx, args.ToID)
+	case "unraid":
+		return nil, t.bc.Unraid(ctx)
 	case "user":
 		u, err := t.bc.LookupUser(ctx, strings.ToLower(strings.TrimPrefix(user, "@")), isID(user))
 		if u == nil {

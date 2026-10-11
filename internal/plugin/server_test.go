@@ -235,6 +235,13 @@ func TestModTwitchViewers(t *testing.T) {
 	if _, err := c.Twitch(ctx, &pb.TwitchRequest{Call: "stream"}); status.Code(err) != codes.Unavailable {
 		t.Fatalf("twitch offline: %v", err)
 	}
+	if _, err := c.Twitch(ctx, &pb.TwitchRequest{Call: "clip"}); status.Code(err) != codes.PermissionDenied ||
+		!strings.Contains(err.Error(), `"clips" to [permissions].twitch`) {
+		t.Fatalf("clip with only read: %v", err)
+	}
+	if _, err := c.Twitch(ctx, &pb.TwitchRequest{Call: "drop_tables"}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("unknown call: %v", err)
+	}
 	if _, err := c.ChatSend(ctx, &pb.ChatSendRequest{Text: "big news", Mode: "announce"}); err != nil || (*sent)[len(*sent)-1] != "big news" {
 		t.Fatalf("announce: %v %q", err, *sent)
 	}

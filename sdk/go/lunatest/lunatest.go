@@ -95,6 +95,12 @@ type FakeTwitch struct {
 	Chan    map[string]*luna.Channel    // by id; "" is this channel
 	Live    luna.Stream
 	Follows map[string]time.Time // user id → followed at
+
+	Categories []luna.Category
+	Schedule   []luna.Segment
+	Ads        luna.AdSchedule
+	Streams    map[string]luna.LiveStream // by login: who's live
+	Writes     []string                   // "set_channel {...}", "clip", "marker {...}", "raid {...}"
 }
 
 func (f *FakeTwitch) Mod(_ context.Context, r *pb.ModRequest) error {
@@ -104,10 +110,48 @@ func (f *FakeTwitch) Mod(_ context.Context, r *pb.ModRequest) error {
 	return nil
 }
 
-func (f *FakeTwitch) Lookup(_ context.Context, call, user string) (any, error) {
+func (f *FakeTwitch) Lookup(_ context.Context, call, user string, args []byte) (any, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	var a struct {
+		Query  string   `json:"query"`
+		Logins []string `json:"logins"`
+	}
+	json.Unmarshal(args, &a)
 	switch call {
+	case "categories":
+		var out []luna.Category
+		for _, c := range f.Categories {
+			if strings.Contains(strings.ToLower(c.Name), strings.ToLower(a.Query)) {
+				out = append(out, c)
+			}
+		}
+		return out, nil
+	case "schedule":
+		return f.Schedule, nil
+	case "streams":
+		var out []luna.LiveStream
+		for _, l := range a.Logins {
+			if s, ok := f.Streams[l]; ok {
+				out = append(out, s)
+			}
+		}
+		return out, nil
+	case "ads":
+		return f.Ads, nil
+	case "set_channel", "clip", "marker", "snooze", "raid", "unraid":
+		f.Writes = append(f.Writes, strings.TrimSpace(call+" "+string(args)))
+		switch call {
+		case "clip":
+			return luna.Clip{ID: "clip1", URL: "https://clips.twitch.tv/clip1"}, nil
+		case "marker":
+			return luna.Marker{ID: "m1", PositionS: 600}, nil
+		case "snooze":
+			f.Ads.NextAdAt = f.Ads.NextAdAt.Add(5 * time.Minute)
+			f.Ads.SnoozeCount--
+			return f.Ads, nil
+		}
+		return nil, nil
 	case "user":
 		for _, u := range f.Users {
 			if strings.EqualFold(u.Login, strings.TrimPrefix(user, "@")) || u.ID == user {
