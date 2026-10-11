@@ -12,7 +12,7 @@ require (
 	github.com/rivo/tview v0.42.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.42.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.60.1
@@ -29,8 +29,8 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/term v0.45.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/term v0.46.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
