@@ -17,6 +17,7 @@ import (
 	"luna/internal/config"
 	"luna/internal/event"
 	"luna/internal/guard"
+	"luna/internal/plugin"
 	"luna/internal/secrets"
 	"luna/internal/store"
 	"luna/internal/twitch"
@@ -79,7 +80,8 @@ func runDaemon(p paths) error {
 
 	g := guard.New(cfg.Get)
 	tw := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
-	caps, err := startCapsules(p, st, publish)
+	host := &plugin.Host{Bus: b, Publish: publish, Store: st, Guard: g}
+	caps, err := startCapsules(p, st, publish, host, cfg.Get)
 	if err != nil {
 		return fmt.Errorf("capsules: %w", err)
 	}

@@ -26,7 +26,9 @@ const (
 
 // hashTree returns "sha256  path" lines for every file under root except the lock
 // and signature. Symlinks and special files are refused, so a package can't point outside itself.
-func hashTree(root string) ([]byte, error) {
+func hashTree(root string) ([]byte, error) { return hashTreeExcept(root, LockFile, SigFile) }
+
+func hashTreeExcept(root string, skip ...string) ([]byte, error) {
 	var lines []string
 	var total int64
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -35,14 +37,14 @@ func hashTree(root string) ([]byte, error) {
 		}
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
-		if d.IsDir() || rel == LockFile || rel == SigFile {
+		if d.IsDir() || slices.Contains(skip, rel) {
 			return nil
 		}
 		if !d.Type().IsRegular() {
 			return fmt.Errorf("%s: only regular files are allowed in a package", rel)
 		}
-		if len(lines) == maxFiles {
-			return fmt.Errorf("package has more than %d files", maxFiles)
+		if len(lines) == maxFiles*4 {
+			return fmt.Errorf("more than %d files", maxFiles*4)
 		}
 		f, err := os.Open(p)
 		if err != nil {

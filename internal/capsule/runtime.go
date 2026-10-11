@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,10 +55,14 @@ type Failure struct {
 type Runtime struct {
 	RunDir  string // sockets and capsule roots; keep it short, Unix socket paths max out at 108 bytes
 	DataDir string // one persistent data/ folder per capsule ID
+	// RuntimesDir holds shared runtimes; SDKDirs maps a runtime family ("python") to the
+	// SDK folder mounted at /sdk for capsules using it.
+	RuntimesDir string
+	SDKDirs     map[string]string
 	// OnState is called on every state change; Luna publishes it as bot.plugin.<state>.
 	OnState func(id, state string, f *Failure)
-	// OnHost receives connections on a capsule's host socket (the plugin API).
-	OnHost func(id string, c net.Conn)
+	// OnHost serves the plugin API on a capsule's host socket until the listener closes.
+	OnHost func(c *Capsule, ln net.Listener)
 
 	mu   sync.Mutex
 	caps map[string]*Capsule
@@ -113,7 +118,7 @@ func cmpStr(a, b string) int {
 // shortcut: capsules start when enabled, not lazily on their first event; lazy start
 // and 15-minute hibernation need the Phase 3 host API's event subscriptions to define "idle".
 func (rt *Runtime) Enable(pkg *Unpacked, uses []string) (*Capsule, error) {
-	if err := CanRun(pkg); err != nil {
+	if err := CanRun(pkg, rt.RuntimesDir); err != nil {
 		return nil, err
 	}
 	m := pkg.Manifest
@@ -130,7 +135,7 @@ func (rt *Runtime) Enable(pkg *Unpacked, uses []string) (*Capsule, error) {
 }
 
 // CanRun says why this host can't run pkg, failing closed on features not built yet.
-func CanRun(pkg *Unpacked) error {
+func CanRun(pkg *Unpacked, runtimesDir string) error {
 	m := pkg.Manifest
 	if len(m.Net) > 0 {
 		return errors.New("network allowlists aren't supported yet; this package can't run")
@@ -138,11 +143,45 @@ func CanRun(pkg *Unpacked) error {
 	if len(m.Devices) > 0 {
 		return errors.New("device access isn't supported yet; this package can't run")
 	}
-	if m.Runtime != "native" {
-		return fmt.Errorf("runtime_missing: %s isn't available yet; only native capsules run for now", m.Runtime)
-	}
-	_, err := entryPath(pkg)
+	_, err := launch(pkg, runtimesDir)
 	return err
+}
+
+// launchSpec is how a package's entry starts: its argv inside the capsule, plus any
+// shared runtime mounts and environment.
+type launchSpec struct {
+	argv   []string
+	mounts []sandbox.Mount
+	env    []string
+}
+
+func launch(pkg *Unpacked, runtimesDir string) (*launchSpec, error) {
+	m := pkg.Manifest
+	switch {
+	case m.Runtime == "native":
+		entry, err := entryPath(pkg)
+		if err != nil {
+			return nil, err
+		}
+		return &launchSpec{argv: append([]string{entry}, m.Args...)}, nil
+	case strings.HasPrefix(m.Runtime, "python-"):
+		info, err := ResolveRuntime(runtimesDir, m.Runtime)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(filepath.Join(pkg.Dir, m.Entry)); err != nil {
+			return nil, fmt.Errorf("entry %s isn't in the package", m.Entry)
+		}
+		libDir := filepath.Dir(info.Loader)
+		argv := append([]string{"/runtime/" + info.Interpreter}, info.Args...)
+		argv = append(argv, "/sdk/luna/_boot.py", "/pkg/"+m.Entry)
+		return &launchSpec{
+			argv:   append(argv, m.Args...),
+			mounts: []sandbox.Mount{{Src: info.Dir, Dst: "/runtime"}, {Src: filepath.Join(info.Dir, "sysroot"), Dst: libDir}},
+			env:    []string{"LD_LIBRARY_PATH=" + libDir},
+		}, nil
+	}
+	return nil, fmt.Errorf("runtime_missing: %s isn't supported yet (native and python-3.12 are)", m.Runtime)
 }
 
 // Disable stops a capsule and forgets it.
@@ -289,7 +328,9 @@ func (c *Capsule) runOnce(ctx context.Context) *Failure {
 		return c.fail("handshake", err)
 	}
 	lns = append(lns, hostLn)
-	go c.acceptHost(hostLn)
+	if c.rt.OnHost != nil {
+		go c.rt.OnHost(c, hostLn)
+	}
 	for _, use := range c.Uses {
 		ln, err := listenUnix(filepath.Join(sock, "links", use))
 		if err != nil {
@@ -300,8 +341,14 @@ func (c *Capsule) runOnce(ctx context.Context) *Failure {
 	}
 
 	m := c.Pkg.Manifest
-	entry, _ := entryPath(c.Pkg)
-	mounts := []sandbox.Mount{{Src: c.Pkg.Dir, Dst: "/pkg"}, {Src: sock, Dst: "/run/capsule"}}
+	ls, err := launch(c.Pkg, c.rt.RuntimesDir)
+	if err != nil {
+		return c.fail("handshake", err)
+	}
+	mounts := append([]sandbox.Mount{{Src: c.Pkg.Dir, Dst: "/pkg"}, {Src: sock, Dst: "/run/capsule"}}, ls.mounts...)
+	if family, _, _ := strings.Cut(m.Runtime, "-"); c.rt.SDKDirs[family] != "" {
+		mounts = append(mounts, sandbox.Mount{Src: c.rt.SDKDirs[family], Dst: "/sdk"})
+	}
 	dir := "/pkg"
 	if m.FS.Writable == "data" {
 		data := filepath.Join(c.rt.DataDir, c.ID)
@@ -321,11 +368,12 @@ func (c *Capsule) runOnce(ctx context.Context) *Failure {
 	for k, v := range m.Env {
 		env = append(env, k+"="+v)
 	}
+	env = append(env, ls.env...)
 	proc, err := sandbox.Start(sandbox.Spec{
 		Name:   c.ID,
 		Root:   filepath.Join(base, "root"),
 		Mounts: mounts,
-		Argv:   append([]string{entry}, m.Args...),
+		Argv:   ls.argv,
 		Env:    env,
 		Dir:    dir,
 		Memory: int64(m.Limits.Memory), CPU: m.Limits.CPU, Pids: m.Limits.Pids, Files: m.Limits.Files,
@@ -502,20 +550,6 @@ func (c *Capsule) logFrame(f Frame) {
 	var l Log
 	if Decode(f.B, &l) == nil {
 		fmt.Fprintf(c.Logs, "[%s] %s\n", l.Level, l.Msg)
-	}
-}
-
-func (c *Capsule) acceptHost(ln net.Listener) {
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		if c.rt.OnHost != nil {
-			go c.rt.OnHost(c.ID, conn)
-		} else {
-			conn.Close()
-		}
 	}
 }
 

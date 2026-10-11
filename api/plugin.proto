@@ -1,0 +1,120 @@
+// Luna plugin API, version 1. A capsule reaches it on $CAPSULE_HOST (a Unix socket);
+// every call is checked against the plugin's [permissions] in plugin.toml.
+// Within API version 1 changes are additive only.
+syntax = "proto3";
+
+package luna.plugin.v1;
+
+option go_package = "luna/internal/plugin/pb";
+
+service Host {
+  // Hello is the first call. It states the API version the plugin speaks and
+  // returns its identity and effective config.
+  rpc Hello(HelloRequest) returns (HelloReply);
+  // Subscribe streams bus events whose type matches one of the patterns
+  // ("twitch.follow" or "twitch.*"). Patterns outside [permissions].events are refused.
+  rpc Subscribe(SubscribeRequest) returns (stream Event);
+  // Commands carries CLI and chat commands to the plugin; the plugin answers each
+  // on the same stream, matched by id.
+  rpc Commands(stream CommandResult) returns (stream Command);
+
+  rpc ChatSend(ChatSendRequest) returns (Empty);
+  rpc StoreGet(StoreKey) returns (StoreValue);
+  rpc StoreSet(StoreSetRequest) returns (Empty);
+  rpc StoreDelete(StoreKey) returns (Empty);
+  rpc StoreIncr(StoreIncrRequest) returns (StoreIncrReply);
+  rpc StoreKeys(StoreKeysRequest) returns (StoreKeysReply);
+  rpc Log(LogRequest) returns (Empty);
+  // Emit publishes plugin.<id>.<name> on the bus.
+  rpc Emit(EmitRequest) returns (Empty);
+}
+
+message Empty {}
+
+message HelloRequest {
+  string api = 1; // "1"
+  string sdk = 2; // e.g. "luna-python/0.1.0", for logs
+}
+
+message HelloReply {
+  string id = 1;
+  bytes config_json = 2; // the plugin's [config] with the user's overrides applied
+  bool dev = 3;          // running under luna capsule dev: chat never reaches Twitch
+}
+
+message SubscribeRequest {
+  repeated string types = 1;
+}
+
+// Event is the bus envelope; data_json is the payload object.
+message Event {
+  string id = 1;
+  string type = 2;
+  string source = 3;
+  int64 ts_ms = 4;
+  bool simulated = 5;
+  bytes data_json = 6;
+}
+
+message Command {
+  uint64 id = 1;
+  string kind = 2;      // "cli" or "chat"
+  string name = 3;      // command name as declared in plugin.toml
+  bytes args_json = 4;  // object of arg and flag values, already validated by Luna
+  Event event = 5;      // chat commands: the chat message that invoked it
+}
+
+message CommandResult {
+  uint64 id = 1;
+  bytes data_json = 2; // structured result; Luna renders it as a table or JSON
+  string text = 3;     // or plain text
+  string error = 4;    // non-empty when the command failed
+}
+
+message ChatSendRequest {
+  string text = 1;
+  bool simulated = 2;  // replying to a simulated event: goes to the terminal, not Twitch
+  string reply_to = 3; // event id of the message being answered, if any
+}
+
+message StoreKey {
+  string key = 1;
+}
+
+message StoreValue {
+  bool found = 1;
+  bytes value_json = 2;
+}
+
+message StoreSetRequest {
+  string key = 1;
+  bytes value_json = 2;
+  int64 ttl_ms = 3; // 0 = no expiry
+}
+
+message StoreIncrRequest {
+  string key = 1;
+  int64 by = 2;
+}
+
+message StoreIncrReply {
+  int64 value = 1;
+}
+
+message StoreKeysRequest {
+  string prefix = 1;
+}
+
+message StoreKeysReply {
+  repeated string keys = 1;
+}
+
+message LogRequest {
+  string level = 1; // debug, info, warn, error
+  string msg = 2;
+}
+
+message EmitRequest {
+  string name = 1;
+  bytes data_json = 2;
+}

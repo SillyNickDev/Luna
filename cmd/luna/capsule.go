@@ -8,19 +8,25 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"luna/internal/capsule"
 	"luna/internal/capsule/sandbox"
+	"luna/internal/config"
 	"luna/internal/event"
+	"luna/internal/plugin"
 	"luna/internal/store"
+	"luna/sdk/python"
 )
 
 func (p paths) capsuleStore() string { return filepath.Join(p.data, "capsules", "store") }
 func (p paths) capsuleData() string  { return filepath.Join(p.data, "capsules", "data") }
+func (p paths) runtimes() string     { return filepath.Join(p.data, "runtimes") }
 
 // runDir holds capsule sockets and roots. It's per data dir, so two Luna instances can't
 // collide, and short, because Unix socket paths max out at 108 bytes.
@@ -35,8 +41,14 @@ func (p paths) runDir() string {
 
 // approval describes pkg's permissions in plain words. The fingerprint covers the
 // permissions only, so an update that doesn't widen them needs no new approval.
-func approval(m *capsule.Manifest) (text, fingerprint string) {
+func approval(u *capsule.Unpacked) (text, fingerprint string, err error) {
+	m := u.Manifest
+	pm, err := plugin.Load(u.Dir)
+	if err != nil {
+		return "", "", err
+	}
 	var b strings.Builder
+	b.WriteString(pm.Describe())
 	fmt.Fprintf(&b, "  memory up to %d MiB, %g%% of one CPU, %d processes, %d open files\n",
 		m.Limits.Memory>>20, m.Limits.CPU*100, m.Limits.Pids, m.Limits.Files)
 	if m.FS.Writable == "data" {
@@ -61,7 +73,7 @@ func approval(m *capsule.Manifest) (text, fingerprint string) {
 		fmt.Fprintf(&b, "  offers the link %q to other plugins\n", l)
 	}
 	sum := sha256.Sum256([]byte(b.String()))
-	return b.String(), hex.EncodeToString(sum[:])
+	return b.String(), hex.EncodeToString(sum[:]), nil
 }
 
 // capsuleCLI runs the subcommands that work without the daemon, and forwards the rest.
@@ -123,7 +135,17 @@ func capsuleCLI(p paths, args []string) error {
 		}
 		fmt.Printf("ok: %s %s, package %s\n", u.Manifest.ID, u.Manifest.Version, u.Hash[:12])
 		return nil
-	case "init", "dev", "search", "update", "runtime":
+	case "runtime":
+		if len(args) != 3 || args[1] != "add" {
+			return errors.New("usage: luna capsule runtime add python-3.12")
+		}
+		info, err := capsule.AddRuntime(p.runtimes(), args[2], os.Stdout)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("installed %s %s\n", info.Name, info.Version)
+		return nil
+	case "init", "dev", "search", "update":
 		return fmt.Errorf("luna capsule %s comes with the SDK and plugin index (Phase 3)", args[0])
 	}
 	return call(p, request{Cmd: "capsule", Args: args})
@@ -147,10 +169,13 @@ func installCapsule(p paths, args []string) error {
 		return err
 	}
 	m := u.Manifest
-	if err := capsule.CanRun(u); err != nil {
+	if err := capsule.CanRun(u, p.runtimes()); err != nil {
 		return err
 	}
-	text, fp := approval(m)
+	text, fp, err := approval(u)
+	if err != nil {
+		return err
+	}
 	prev, err := callOut(p, request{Cmd: "capsule", Args: []string{"approved", m.ID}})
 	if err != nil {
 		return err
@@ -172,8 +197,11 @@ func installCapsule(p paths, args []string) error {
 	return call(p, request{Cmd: "capsule", Args: []string{"register", u.Hash, fp}})
 }
 
+// devCapsules are running under luna capsule dev: their chat never reaches Twitch.
+var devCapsules sync.Map
+
 // startCapsules creates the runtime and starts every enabled capsule.
-func startCapsules(p paths, st *store.Store, publish func(event.Event)) (*capsule.Runtime, error) {
+func startCapsules(p paths, st *store.Store, publish func(event.Event), host *plugin.Host, cfg func() *config.Config) (*capsule.Runtime, error) {
 	run := p.runDir()
 	if err := os.MkdirAll(run, 0o700); err != nil {
 		return nil, err
@@ -181,9 +209,15 @@ func startCapsules(p paths, st *store.Store, publish func(event.Event)) (*capsul
 	if err := ownedDir(run); err != nil {
 		return nil, err
 	}
+	sdk, err := pysdk.Install(filepath.Join(p.data, "sdk"))
+	if err != nil {
+		return nil, fmt.Errorf("python sdk: %w", err)
+	}
 	rt := &capsule.Runtime{
-		RunDir:  run,
-		DataDir: p.capsuleData(),
+		SDKDirs:     map[string]string{"python": sdk},
+		RunDir:      run,
+		DataDir:     p.capsuleData(),
+		RuntimesDir: p.runtimes(),
 		OnState: func(id, state string, f *capsule.Failure) {
 			d := map[string]any{"id": id, "state": state}
 			if f != nil {
@@ -193,7 +227,21 @@ func startCapsules(p paths, st *store.Store, publish func(event.Event)) (*capsul
 				publish(ev)
 			}
 		},
-		// shortcut: the plugin API on the host socket is Phase 3; connections are closed for now.
+		OnHost: func(c *capsule.Capsule, ln net.Listener) {
+			m, err := plugin.Load(c.Pkg.Dir)
+			var conf []byte
+			if err == nil {
+				m.ID = c.ID
+				conf, err = m.EffectiveConfig(m.Overrides(cfg().Plugins))
+			}
+			if err != nil {
+				fmt.Fprintf(c.Logs, "luna: plugin API unavailable: %v\n", err)
+				ln.Close()
+				return
+			}
+			_, dev := devCapsules.Load(c.ID)
+			host.Serve(plugin.Plugin{ID: c.ID, Manifest: m, Config: conf, Dev: dev, Log: c.Logs}, ln)
+		},
 	}
 	rows, err := st.Capsules()
 	if err != nil {
@@ -300,6 +348,8 @@ func capsuleCmd(p paths, args []string, rt *capsule.Runtime, st *store.Store) (s
 			msg += "; kept its data"
 		} else if err := os.RemoveAll(filepath.Join(p.capsuleData(), row.ID)); err != nil {
 			return "", err
+		} else if err := st.PluginForget(row.ID); err != nil {
+			return "", err
 		}
 		gcStore(p, st)
 		return msg, nil
@@ -326,7 +376,7 @@ func registerCapsule(p paths, args []string, rt *capsule.Runtime, st *store.Stor
 	if err != nil {
 		return "", err
 	}
-	if _, fp := approval(u.Manifest); fp != args[1] {
+	if _, fp, err := approval(u); err != nil || fp != args[1] {
 		return "", errors.New("approval doesn't match this package's permissions; install again")
 	}
 	m := u.Manifest
@@ -372,7 +422,7 @@ func inspect(p paths, row *store.CapsuleRow, c *capsule.Capsule) (string, error)
 	if c != nil {
 		state = c.State()
 	}
-	text, _ := approval(m)
+	text, _, _ := approval(u)
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s (%s), %s\npackage %s\n%s", m.ID, m.Version, m.Runtime, state, u.Hash[:16], text)
 	for _, ch := range sandbox.Doctor() {

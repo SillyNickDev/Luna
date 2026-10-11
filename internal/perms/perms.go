@@ -166,3 +166,6 @@ func (r *Ranks) Resolve(id string, roles []string) Rank {
 	}
 	return Moderator
 }
+
+// Known reports whether c is a built-in capability.
+func Known(c string) bool { _, ok := minRank[c]; return ok }

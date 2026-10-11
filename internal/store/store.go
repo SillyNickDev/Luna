@@ -3,8 +3,12 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +42,13 @@ CREATE TABLE IF NOT EXISTS capsules (
 	uses     TEXT NOT NULL,
 	approved TEXT NOT NULL,
 	updated  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS plugin_store (
+	plugin  TEXT NOT NULL,
+	key     TEXT NOT NULL,
+	value   BLOB NOT NULL,
+	expires INTEGER NOT NULL, -- unix ms, 0 = never
+	PRIMARY KEY (plugin, key)
 );`
 
 type Store struct {
@@ -243,4 +254,146 @@ func (s *Store) SaveCapsule(r CapsuleRow) error {
 func (s *Store) DeleteCapsule(id string) error {
 	_, err := s.db.Exec(`DELETE FROM capsules WHERE id = ?`, id)
 	return err
+}
+
+// Plugin store limits, so one plugin can't fill the disk.
+const (
+	MaxKey       = 256
+	MaxValue     = 64 << 10
+	MaxKeys      = 10000
+	errKeyPrefix = "store: "
+)
+
+var ErrStoreFull = errors.New(errKeyPrefix + "this plugin already has the maximum of 10000 keys")
+
+func live(now time.Time) int64 { return now.UnixMilli() }
+
+// PluginGet returns a plugin's JSON value, or nil if missing or expired.
+func (s *Store) PluginGet(plugin, key string) ([]byte, error) {
+	var v []byte
+	err := s.db.QueryRow(`SELECT value FROM plugin_store WHERE plugin = ? AND key = ? AND (expires = 0 OR expires > ?)`,
+		plugin, key, live(time.Now())).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return v, err
+}
+
+// PluginSet stores a JSON value; ttl 0 keeps it forever.
+func (s *Store) PluginSet(plugin, key string, value []byte, ttl time.Duration) error {
+	if err := checkKV(key, value); err != nil {
+		return err
+	}
+	var exp int64
+	if ttl > 0 {
+		exp = time.Now().Add(ttl).UnixMilli()
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := roomFor(tx, plugin, key); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO plugin_store (plugin, key, value, expires) VALUES (?, ?, ?, ?)
+		ON CONFLICT(plugin, key) DO UPDATE SET value = excluded.value, expires = excluded.expires`, plugin, key, value, exp); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// PluginIncr adds by to an integer value (missing or expired counts as 0), atomically.
+func (s *Store) PluginIncr(plugin, key string, by int64) (int64, error) {
+	if err := checkKV(key, nil); err != nil {
+		return 0, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var cur []byte
+	var exp int64
+	err = tx.QueryRow(`SELECT value, expires FROM plugin_store WHERE plugin = ? AND key = ?`, plugin, key).Scan(&cur, &exp)
+	var n int64
+	switch {
+	case errors.Is(err, sql.ErrNoRows) || exp != 0 && exp <= live(time.Now()):
+		if err := roomFor(tx, plugin, key); err != nil {
+			return 0, err
+		}
+		exp = 0
+	case err != nil:
+		return 0, err
+	default:
+		if json.Unmarshal(cur, &n) != nil {
+			return 0, fmt.Errorf(errKeyPrefix+"%q doesn't hold an integer", key)
+		}
+	}
+	n += by
+	if _, err := tx.Exec(`INSERT INTO plugin_store (plugin, key, value, expires) VALUES (?, ?, ?, ?)
+		ON CONFLICT(plugin, key) DO UPDATE SET value = excluded.value`, plugin, key, strconv.AppendInt(nil, n, 10), exp); err != nil {
+		return 0, err
+	}
+	return n, tx.Commit()
+}
+
+func (s *Store) PluginDelete(plugin, key string) error {
+	_, err := s.db.Exec(`DELETE FROM plugin_store WHERE plugin = ? AND key = ?`, plugin, key)
+	return err
+}
+
+// PluginKeys lists live keys starting with prefix, sorted.
+func (s *Store) PluginKeys(plugin, prefix string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT key FROM plugin_store WHERE plugin = ? AND substr(key, 1, ?) = ? AND (expires = 0 OR expires > ?) ORDER BY key`,
+		plugin, len(prefix), prefix, live(time.Now()))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+// PluginForget deletes everything a plugin stored (uninstall without --keep-data).
+func (s *Store) PluginForget(plugin string) error {
+	_, err := s.db.Exec(`DELETE FROM plugin_store WHERE plugin = ?`, plugin)
+	return err
+}
+
+func checkKV(key string, value []byte) error {
+	switch {
+	case key == "" || len(key) > MaxKey:
+		return fmt.Errorf(errKeyPrefix+"keys must be 1-%d bytes", MaxKey)
+	case len(value) > MaxValue:
+		return fmt.Errorf(errKeyPrefix+"values must be at most %d KiB", MaxValue>>10)
+	}
+	return nil
+}
+
+// roomFor refuses a new key once the plugin is at MaxKeys, dropping expired rows first.
+func roomFor(tx *sql.Tx, plugin, key string) error {
+	var exists bool
+	tx.QueryRow(`SELECT 1 FROM plugin_store WHERE plugin = ? AND key = ?`, plugin, key).Scan(&exists)
+	if exists {
+		return nil
+	}
+	if _, err := tx.Exec(`DELETE FROM plugin_store WHERE plugin = ? AND expires != 0 AND expires <= ?`, plugin, live(time.Now())); err != nil {
+		return err
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT count(*) FROM plugin_store WHERE plugin = ?`, plugin).Scan(&n); err != nil {
+		return err
+	}
+	if n >= MaxKeys {
+		return ErrStoreFull
+	}
+	return nil
 }

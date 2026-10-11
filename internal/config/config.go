@@ -32,6 +32,9 @@ type Config struct {
 		SameRankOverride map[string]bool `toml:"same_rank_override"`
 	} `toml:"perms"`
 	MemoryLimitMiB int `toml:"memory_limit_mib"`
+	// Plugins holds each plugin's settings, keyed by its CLI name, the last part of its ID,
+	// or its full ID. They're checked against the plugin's [config] schema when it starts.
+	Plugins map[string]map[string]any `toml:"plugins"`
 }
 
 func Default() *Config {
