@@ -8,6 +8,7 @@ import (
 	"luna/bundle"
 	"luna/plugins/giveaways"
 	"luna/plugins/points"
+	"luna/plugins/stream"
 )
 
 type Plugin struct {
@@ -21,6 +22,7 @@ var All = []Plugin{
 	{[]string{"core", "essentials", "mod", "events", "shoutouts"}, "__bundle", bundle.Manifest, bundle.Main},
 	{[]string{"points"}, "__points", points.Manifest, points.Main},
 	{[]string{"giveaways"}, "__giveaways", giveaways.Manifest, giveaways.Main},
+	{[]string{"stream"}, "__stream", stream.Manifest, stream.Main},
 }
 
 // Find looks a plugin up by install name, with or without the "luna." prefix.

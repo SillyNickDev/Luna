@@ -218,3 +218,20 @@ func TestFold(t *testing.T) {
 		t.Errorf("joinNames: %q", got)
 	}
 }
+
+func TestTitleAndGameEditsGoToStreamTools(t *testing.T) {
+	h := start(t, nil)
+	said(t, h.Chat("fox", "!title hacked"), "first playthrough") // viewers just see the title
+	h.Clock.Advance(6 * time.Second)
+	said(t, h.Chat("mink", "!title New title", "luna-mod"), "Changing the title needs Stream tools: luna capsule install stream")
+	var got luna.Args
+	h.Link("luna.stream:edit", func(a luna.Args) (any, error) {
+		got = a
+		return map[string]string{"message": "Category set: Elden Ring"}, nil
+	})
+	h.Clock.Advance(6 * time.Second)
+	said(t, h.Chat("mink", "!game elden ring", "luna-mod"), "Category set: Elden Ring")
+	if got.Str("what") != "game" || got.Str("value") != "elden ring" || got.Str("actor") != "mink" {
+		t.Fatalf("link args %v", got)
+	}
+}

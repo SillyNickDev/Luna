@@ -18,6 +18,9 @@ twitch = ["read"]
 viewers = true
 store = true
 
+[links]
+uses = ["luna.stream:edit"]   # !title and !game edits by Luna mods, when Stream tools is installed
+
 [cli]
 name = "core"
 

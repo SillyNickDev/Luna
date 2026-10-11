@@ -1,0 +1,71 @@
+id = "luna.stream"
+name = "Stream tools: title and category, clips, markers, ads, schedule, raids, recap"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"
+entry = "__stream"
+limits = { memory = "32m", cpu = 0.1 }
+
+[permissions]
+events = ["twitch.chat.message", "twitch.channel.follow", "twitch.channel.subscribe", "twitch.channel.resub",
+  "twitch.channel.gift", "twitch.channel.cheer", "twitch.channel.raid", "twitch.channel.update",
+  "twitch.channel.ad_break", "twitch.stream.online", "twitch.stream.offline"]
+chat = ["send"]
+twitch = ["read", "edit", "clips", "markers", "ads", "raid"]
+store = true
+
+[links]
+provides = ["edit"]   # the core bundle's !title and !game, for Luna mods
+
+[cli]
+name = "stream"
+
+[[cli.commands]]
+name = "title"
+summary = "set the stream title"
+args = [{ name = "text", type = "str" }]
+mutates = true
+
+[[cli.commands]]
+name = "game"
+summary = "set the category; an inexact name lists the closest matches"
+args = [{ name = "name", type = "str" }]
+mutates = true
+
+[[cli.commands]]
+name = "recap"
+summary = "the current or last stream: followers, subs, top chatters, clips, markers, peak viewers"
+
+[[chat.commands]]
+name = "clip"
+cooldown = { global = "30s" }
+
+[[chat.commands]]
+name = "marker"
+capability = "stream.edit"
+
+[[chat.commands]]
+name = "ads"
+capability = "stream.edit"
+
+[[chat.commands]]
+name = "schedule"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "raid"
+capability = "stream.edit"
+
+[config]
+ad_warn = { type = "bool", default = false }
+ad_warn_s = { type = "int", default = 60 }
+ad_warn_message = { type = "str", default = "Ads {in} for {duration}. Grab a drink! 💜" }
+ad_thanks = { type = "bool", default = false }
+ad_thanks_message = { type = "str", default = "Thanks for sitting through the ads! 💜" }
+clip_message = { type = "str", default = "🎬 {url}" }
+raid_friends = { type = "str", default = "" }
+schedule_timezone = { type = "str", default = "UTC" }
+viewer_poll_m = { type = "int", default = 5 }
+recap_top_chatters = { type = "int", default = 5 }

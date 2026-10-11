@@ -1,6 +1,7 @@
 package bundle
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"regexp"
@@ -99,14 +100,21 @@ func (c *core) setupEssentials() {
 		}
 		return ctx.Reply("Live for " + human(bot.Now().Sub(s.StartedAt)) + ".")
 	})
-	c.chat(luna.ChatCommand{Name: "game", Cooldown: "5s"}, func(ctx *luna.Ctx, _ []string) error {
+	bot.Links.Use(streamEdit)
+	c.chat(luna.ChatCommand{Name: "game", Cooldown: "5s"}, func(ctx *luna.Ctx, args []string) error {
+		if len(args) > 0 && ctx.User().RankAtLeast("luna-mod") {
+			return c.editStream(ctx, "game", args)
+		}
 		ch, err := bot.Twitch.Channel(ctx, "")
 		if err != nil || ch == nil {
 			return err
 		}
 		return ctx.Reply("Playing " + ch.Game + ".")
 	})
-	c.chat(luna.ChatCommand{Name: "title", Cooldown: "5s"}, func(ctx *luna.Ctx, _ []string) error {
+	c.chat(luna.ChatCommand{Name: "title", Cooldown: "5s"}, func(ctx *luna.Ctx, args []string) error {
+		if len(args) > 0 && ctx.User().RankAtLeast("luna-mod") {
+			return c.editStream(ctx, "title", args)
+		}
 		ch, err := bot.Twitch.Channel(ctx, "")
 		if err != nil || ch == nil {
 			return err
@@ -705,4 +713,24 @@ func (c *core) isRegular(ctx *luna.Ctx, userID string) (bool, error) {
 		return false, err
 	}
 	return v.WatchS >= int64(c.cfg.RegularWatchHours)*3600, nil
+}
+
+const streamEdit = "luna.stream:edit"
+
+// editStream hands a Luna mod's !title or !game to Stream tools, which holds the permission
+// to change the channel. shortcut: the rank check mirrors stream.edit's default (Luna mod); read
+// the streamer's capability table once the plugin API exposes it.
+func (c *core) editStream(ctx *luna.Ctx, what string, args []string) error {
+	var out struct {
+		Message string `json:"message"`
+	}
+	err := c.bot.Links.Call(ctx, streamEdit, map[string]any{"what": what, "value": strings.Join(args, " "),
+		"actor": ctx.User().Login, "simulated": ctx.Event != nil && ctx.Event.Simulated}, &out)
+	switch {
+	case errors.Is(err, luna.ErrLinkUnavailable):
+		return ctx.Reply("Changing the " + what + " needs Stream tools: luna capsule install stream")
+	case err != nil:
+		return ctx.Reply(strings.TrimPrefix(err.Error(), streamEdit+": "))
+	}
+	return ctx.Reply(out.Message)
 }
