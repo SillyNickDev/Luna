@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"luna/bundle"
 	"luna/internal/capsule"
 	"luna/internal/capsule/sandbox"
 	"luna/internal/config"
@@ -166,6 +167,15 @@ func installCapsule(p paths, args []string) error {
 		return errors.New("usage: luna capsule install [--yes] <folder|file.capsule>")
 	}
 	src := fs.Arg(0)
+	switch src {
+	case "core", "luna.core", "essentials", "mod", "events", "shoutouts":
+		dir, err := bundlePackage()
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		src = dir
+	}
 	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("%s: no such folder or .capsule file (installing by name needs the plugin index, which doesn't exist yet)", src)
 	}
@@ -200,6 +210,23 @@ func installCapsule(p paths, args []string) error {
 		}
 	}
 	return call(p, request{Cmd: "capsule", Args: []string{"register", u.Hash, fp}})
+}
+
+// bundlePackage builds the core bundle's package: just its plugin.toml, since it runs
+// on the luna runtime (this binary, as `luna __bundle`).
+func bundlePackage() (string, error) {
+	dir, err := os.MkdirTemp("", "luna-core-")
+	if err == nil {
+		err = os.WriteFile(filepath.Join(dir, "plugin.toml"), bundle.Manifest, 0o644)
+	}
+	if err == nil {
+		err = capsule.WriteLock(dir)
+	}
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	return dir, nil
 }
 
 // devCapsules are running under luna capsule dev: their chat never reaches Twitch.

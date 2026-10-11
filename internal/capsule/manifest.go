@@ -111,7 +111,7 @@ var (
 	idRe      = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
 	semverRe  = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`)
 	linkRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
-	runtimeRe = regexp.MustCompile(`^(native|wasm|[a-z]+-\d+(\.\d+)?)$`)
+	runtimeRe = regexp.MustCompile(`^(native|wasm|luna|[a-z]+-\d+(\.\d+)?)$`)
 	envRe     = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
 )
 
@@ -145,7 +145,7 @@ func (m *Manifest) Validate() error {
 		bad("version must be semver like 1.2.3, got %q", m.Version)
 	}
 	if !runtimeRe.MatchString(m.Runtime) {
-		bad("runtime must be native, wasm or a shared runtime like python-3.12, got %q", m.Runtime)
+		bad("runtime must be native, wasm, luna or a shared runtime like python-3.12, got %q", m.Runtime)
 	}
 	if !localPath(m.Entry) {
 		bad("entry must be a relative path inside the package, got %q", m.Entry)

@@ -11,6 +11,7 @@ Run them with `go test ./internal/capsule/...` on the target OS.
 | Read another capsule's `data/` | blocked | — | — | `sandbox.TestIsolation` |
 | Write outside its own `data/` | blocked | — | — | `sandbox.TestIsolation` |
 | Execute a file it wrote | blocked | — | — | `sandbox.TestIsolation` |
+| Write a single mounted file, or see the folder around it (`runtime = "luna"`) | blocked | — | — | `sandbox.TestFileMount` |
 | TCP connection with `net = "none"` | blocked | — | — | `sandbox.TestIsolation` |
 | Reach a non-allowlisted host | n/a: allowlists not implemented, such packages are refused | — | — | `capsule.CanRun` |
 | Allocate past the memory cap | killed, cause `oom` | — | — | `sandbox.TestLimits` |

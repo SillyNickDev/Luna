@@ -1,0 +1,202 @@
+id = "luna.core"
+name = "Core bundle: Essentials, Moderation, Events, Shoutouts"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "luna"         # the luna binary itself, shared with the daemon
+entry = "__bundle"
+limits = { memory = "64m", cpu = 0.25 }
+
+[permissions]
+events = ["twitch.chat.message", "twitch.channel.follow", "twitch.channel.subscribe", "twitch.channel.resub",
+  "twitch.channel.gift", "twitch.channel.cheer", "twitch.channel.raid", "twitch.channel.update",
+  "twitch.stream.online", "twitch.stream.offline"]
+chat = ["send", "announce", "whisper"]
+mod = ["timeout", "ban", "delete", "warn", "shield", "shoutout"]
+twitch = ["read"]
+viewers = true
+store = true
+
+[cli]
+name = "core"
+
+[[cli.commands]]
+name = "timeline"
+summary = "recent moderation and counter changes, newest first (also: luna mod timeline)"
+flags = [{ name = "n", type = "int", optional = true }]
+
+[[cli.commands]]
+name = "undo"
+summary = "reverse a timeline entry"
+args = [{ name = "id", type = "int" }]
+
+[[cli.commands]]
+name = "commands"
+summary = "custom chat commands"
+
+[[cli.commands]]
+name = "quotes"
+summary = "every quote"
+
+[[cli.commands]]
+name = "counters"
+summary = "counters and their values"
+
+[[cli.commands]]
+name = "timers"
+summary = "chat timers"
+
+[[cli.commands]]
+name = "phrases"
+summary = "banned phrases (RE2, matched on a folded copy of each message)"
+
+[[cli.commands]]
+name = "phrase-add"
+summary = "ban a phrase"
+args = [{ name = "pattern", type = "str" }]
+mutates = true
+
+[[cli.commands]]
+name = "phrase-remove"
+summary = "unban a phrase"
+args = [{ name = "pattern", type = "str" }]
+mutates = true
+
+# Essentials
+[[chat.commands]]
+name = "cmd"
+capability = "commands.edit"
+
+[[chat.commands]]
+name = "timer"
+capability = "commands.edit"
+
+[[chat.commands]]
+name = "counter"
+capability = "commands.edit"
+
+[[chat.commands]]
+name = "quote"
+cooldown = { user = "5s" }
+
+[[chat.commands]]
+name = "uptime"
+cooldown = { global = "5s" }
+
+[[chat.commands]]
+name = "game"
+cooldown = { global = "5s" }
+
+[[chat.commands]]
+name = "title"
+cooldown = { global = "5s" }
+
+[[chat.commands]]
+name = "followage"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "accountage"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "watchtime"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "lurk"
+
+[[chat.commands]]
+name = "unlurk"
+
+[[chat.commands]]
+name = "commands"
+cooldown = { global = "30s" }
+
+[[chat.commands]]
+name = "birthday"
+cooldown = { user = "10s" }
+
+[[chat.commands]]
+name = "note"
+capability = "mod.notes"
+
+# Moderation
+[[chat.commands]]
+name = "permit"
+capability = "mod.timeout"
+
+[[chat.commands]]
+name = "nuke"
+capability = "mod.timeout"
+
+[[chat.commands]]
+name = "mod"
+capability = "mod.timeout"
+
+[[chat.commands]]
+name = "shield"
+capability = "mod.shield"
+
+[[chat.commands]]
+name = "undo"
+capability = "mod.undo.own"
+
+# Shoutouts
+[[chat.commands]]
+name = "so"
+aliases = ["shoutout"]
+capability = "stream.shoutout"
+
+[config]
+# Essentials
+commands_url = { type = "str", default = "" }
+lurk_message = { type = "str", default = "{user} is lurking. Enjoy the stream!" }
+unlurk_message = { type = "str", default = "Welcome back, {user}! You were away {away}." }
+timer_min_messages = { type = "int", default = 5 }
+regular_watch_hours = { type = "int", default = 10 }
+birthday_message = { type = "str", default = "Happy birthday, {user}! 🎂" }
+# Moderation
+mod_exempt = { type = "str", default = "vip" }
+mod_ladder = { type = "str", default = "delete,60s,10m,flag" }
+mod_strike_decay_m = { type = "int", default = 60 }
+mod_warn_native = { type = "bool", default = true }
+mod_links = { type = "bool", default = true }
+mod_link_allow = { type = "str", default = "clips.twitch.tv" }
+mod_permit_s = { type = "int", default = 60 }
+mod_phrases = { type = "bool", default = true }
+mod_caps = { type = "bool", default = true }
+mod_caps_percent = { type = "int", default = 70 }
+mod_caps_min_len = { type = "int", default = 15 }
+mod_symbols = { type = "bool", default = true }
+mod_repeat = { type = "bool", default = true }
+mod_repeat_count = { type = "int", default = 3 }
+mod_repeat_window_s = { type = "int", default = 30 }
+mod_emotes = { type = "bool", default = false }
+mod_emotes_max = { type = "int", default = 10 }
+mod_long = { type = "bool", default = false }
+mod_long_max = { type = "int", default = 300 }
+mod_nuke_timeout_s = { type = "int", default = 600 }
+mod_shield = { type = "bool", default = true }
+mod_shield_follows = { type = "int", default = 20 }
+mod_shield_same_text = { type = "int", default = 8 }
+mod_shield_window_s = { type = "int", default = 30 }
+mod_shield_off_m = { type = "int", default = 10 }
+# Events: which thank-yous to post, e.g. "follow,sub,resub,gift,bits,raid,first,welcome_back"
+events_on = { type = "str", default = "" }
+follow_message = { type = "str", default = "Welcome to the pack, {names}!" }
+follow_batch_s = { type = "int", default = 10 }
+sub_message = { type = "str", default = "{user} just subscribed! Thank you 💜" }
+resub_message = { type = "str", default = "{user} resubscribed for {months} months! Thank you 💜" }
+gift_message = { type = "str", default = "{user} gifted {count} subs! Thank you 🎁" }
+bits_message = { type = "str", default = "{user} cheered {bits} bits! Thank you ✨" }
+raid_message = { type = "str", default = "{user} is raiding with {viewers} viewers! Welcome, raiders!" }
+first_message = { type = "str", default = "Welcome to chat, {user}! 👋" }
+welcome_back_message = { type = "str", default = "Welcome back, {user}! It's been a while." }
+welcome_back_days = { type = "int", default = 14 }
+# Shoutouts
+so_message = { type = "str", default = "Go check out {name}! They were last playing {game}: https://twitch.tv/{login}" }
+so_native = { type = "bool", default = true }
+so_raids = { type = "bool", default = true }
+so_friends = { type = "str", default = "" }

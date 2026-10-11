@@ -3,6 +3,7 @@ package capsule
 import (
 	"context"
 	"crypto/sha256"
+	"debug/elf"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -164,6 +165,15 @@ func launch(pkg *Unpacked, runtimesDir string) (*launchSpec, error) {
 			return nil, err
 		}
 		return &launchSpec{argv: append([]string{entry}, m.Args...)}, nil
+	case m.Runtime == "luna":
+		// The luna binary itself, entry being its first argument: the core bundle runs as
+		// `luna __bundle`. Same file as the daemon's, so the code pages are shared.
+		exe, err := staticSelf()
+		if err != nil {
+			return nil, err
+		}
+		return &launchSpec{argv: append([]string{"/luna", m.Entry}, m.Args...),
+			mounts: []sandbox.Mount{{Src: exe, Dst: "/luna"}}}, nil
 	case strings.HasPrefix(m.Runtime, "python-"):
 		info, err := ResolveRuntime(runtimesDir, m.Runtime)
 		if err != nil {
@@ -181,7 +191,30 @@ func launch(pkg *Unpacked, runtimesDir string) (*launchSpec, error) {
 			env:    []string{"LD_LIBRARY_PATH=" + libDir},
 		}, nil
 	}
-	return nil, fmt.Errorf("runtime_missing: %s isn't supported yet (native and python-3.12 are)", m.Runtime)
+	return nil, fmt.Errorf("runtime_missing: %s isn't supported yet (native, luna and python-3.12 are)", m.Runtime)
+}
+
+// staticSelf is this binary's path, refusing a luna built with cgo: the sandbox has no
+// dynamic loader to run it.
+func staticSelf() (string, error) {
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+	}
+	if err != nil {
+		return "", fmt.Errorf("runtime_missing: can't find the luna binary: %w", err)
+	}
+	f, err := elf.Open(exe)
+	if err != nil {
+		return exe, nil // not ELF (another OS): the backend decides
+	}
+	defer f.Close()
+	for _, p := range f.Progs {
+		if p.Type == elf.PT_INTERP {
+			return "", errors.New("runtime_missing: this luna was built with cgo, so it can't run sandboxed; rebuild with CGO_ENABLED=0")
+		}
+	}
+	return exe, nil
 }
 
 // Disable stops a capsule and forgets it.

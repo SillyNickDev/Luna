@@ -47,6 +47,7 @@ var setupSteps = []struct {
 		return nil
 	}},
 	{"service", "Run Luna as a systemd user service", setupService},
+	{"core", "Core bundle: Essentials, Moderation, Events, Shoutouts", setupCore},
 	{"smoke", "Smoke test", setupSmoke},
 }
 
@@ -61,7 +62,7 @@ func setup(p paths, args []string) error {
 		case only == "" && !strings.HasPrefix(a, "-"):
 			only = a
 		default:
-			return exitErr{exitUsage, "usage: luna setup [check|twitch|bot|runtime|service|smoke] [--no-service]"}
+			return exitErr{exitUsage, "usage: luna setup [check|twitch|bot|runtime|service|core|smoke] [--no-service]"}
 		}
 	}
 	found := false
@@ -207,16 +208,30 @@ func systemdQuote(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-func setupSmoke(p paths, _ bool) error {
+// waitDaemon gives a just-started daemon five seconds to answer.
+func waitDaemon(p paths) error {
 	var err error
 	for i := 0; i < 20; i++ {
 		if _, err = callOut(p, request{Cmd: "status"}); err == nil {
-			break
+			return nil
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	if err != nil {
-		return errors.New("the daemon isn't reachable; start it with `luna start` or `luna daemon`")
+	return errors.New("the daemon isn't reachable; start it with `luna start` or `luna daemon`")
+}
+
+// setupCore installs the core bundle, showing its permissions for approval like any plugin.
+func setupCore(p paths, _ bool) error {
+	if err := waitDaemon(p); err != nil {
+		return err
+	}
+	fmt.Println("  Thank-you messages are off until you pick them: luna config set plugins.core.events_on follow,sub,raid")
+	return installCapsule(p, []string{"core"})
+}
+
+func setupSmoke(p paths, _ bool) error {
+	if err := waitDaemon(p); err != nil {
+		return err
 	}
 	out, err := callOut(p, request{Cmd: "sim", Args: []string{"follow", "--user", "luna_smoke_test"}})
 	if err != nil {

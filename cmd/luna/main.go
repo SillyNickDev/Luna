@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"luna/bundle"
 	"luna/internal/capsule/sandbox"
 )
 
@@ -32,7 +33,10 @@ const usageText = `usage: luna [--config <dir>] <command>
                         ranks: viewer, moderator, luna-mod, head-mod
   chat say <text>       send a chat message through the output guard
   config show [key] | get <key> | set <key> <value> | edit | validate
-  capsule install [--yes] <folder|file.capsule>
+  capsule install [--yes] <folder|file.capsule|core>
+                        core: Essentials, Moderation, Events, Shoutouts
+  mod timeline | undo <id>
+                        moderation actions, with undo (also: luna core --help)
   capsule list | enable | disable | restart | logs | inspect <name>
   capsule uninstall <name> [--keep-data]
   capsule doctor | pack [dir] [-o file] | verify <path>
@@ -51,6 +55,10 @@ type paths struct {
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == sandbox.InitArg {
 		sandbox.Init() // luna re-executes itself as each capsule's setup stage
+	}
+	if len(os.Args) > 1 && os.Args[1] == "__bundle" {
+		bundle.Main() // the core bundle's capsule runs a copy of this binary
+		return
 	}
 	fs := flag.NewFlagSet("luna", flag.ExitOnError)
 	confDir := fs.String("config", "", "config directory")
@@ -94,6 +102,8 @@ func main() {
 			err = call(p, request{Cmd: "chat", Args: args[2:]})
 		case args[0] == "capsule":
 			err = capsuleCLI(p, args[1:])
+		case args[0] == "mod" && len(args) > 1: // Moderation's commands live in the core bundle
+			err = call(p, request{Cmd: "plugin", Args: append([]string{"luna.core"}, args[1:]...)})
 		case args[0] == "plugin" && len(args) > 1:
 			err = call(p, request{Cmd: "plugin", Args: args[1:]})
 		case !strings.HasPrefix(args[0], "-"):

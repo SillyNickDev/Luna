@@ -144,3 +144,28 @@ func TestNoOrphans(t *testing.T) {
 		t.Fatalf("capsule child outlived it: pids %s", ps)
 	}
 }
+
+// A single file can be mounted (the luna runtime mounts the luna binary), read-only and
+// without the folder around it.
+func TestFileMount(t *testing.T) {
+	b := newBox(t)
+	run := func(args ...string) string {
+		var out bytes.Buffer
+		p, err := Start(Spec{Name: "test", Root: t.TempDir(), Mounts: []Mount{{Src: filepath.Join(b.pkg, "probe"), Dst: "/tool"}},
+			Argv: append([]string{"/tool"}, args...), Dir: "/", Memory: 64 << 20, CPU: 0.5, Pids: 8, Files: 64, Stdout: &out, Stderr: &out})
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-p.Done()
+		return strings.TrimSpace(out.String())
+	}
+	if out := run("read", "/tool"); out != "OK" {
+		t.Fatalf("running and reading a mounted file: %s", out)
+	}
+	if out := run("write", "/tool"); out == "OK" {
+		t.Fatal("a mounted file is writable")
+	}
+	if out := run("read", "/pkg/probe"); out == "OK" {
+		t.Fatal("the folder around a mounted file is visible")
+	}
+}

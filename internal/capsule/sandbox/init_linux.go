@@ -42,7 +42,14 @@ func setup() error {
 	}
 	for _, m := range c.Mounts {
 		dst := filepath.Join(root, m.Dst)
-		if err := os.MkdirAll(dst, 0o755); err != nil {
+		if fi, err := os.Stat(m.Src); err == nil && fi.Mode().IsRegular() { // a single file: bind it onto an empty one
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(dst, nil, 0o555); err != nil {
+				return err
+			}
+		} else if err := os.MkdirAll(dst, 0o755); err != nil {
 			return err
 		}
 		if err := bind(m.Src, dst, m.RW, false); err != nil {
@@ -115,7 +122,7 @@ func setup() error {
 // mount already has are kept, since an unprivileged user namespace can't clear them.
 func bind(src, dst string, rw, dev bool) error {
 	if err := unix.Mount(src, dst, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
-		return err
+		return fmt.Errorf("bind: %w", err)
 	}
 	var st unix.Statfs_t
 	if err := unix.Statfs(dst, &st); err != nil {
@@ -138,7 +145,10 @@ func bind(src, dst string, rw, dev bool) error {
 	if !dev {
 		flags |= unix.MS_NODEV
 	}
-	return unix.Mount("", dst, "", flags, "")
+	if err := unix.Mount("", dst, "", flags, ""); err != nil {
+		return fmt.Errorf("remount: %w", err)
+	}
+	return nil
 }
 
 const (
@@ -192,6 +202,9 @@ func landlock(mounts []Mount, proc bool) error {
 		access := uint64(llRead | llExec)
 		if m.RW {
 			access = attr.Access_fs &^ llExec
+		}
+		if fi, err := os.Stat(m.Dst); err == nil && fi.Mode().IsRegular() {
+			access &= unix.LANDLOCK_ACCESS_FS_READ_FILE | llExec // a file rule takes file rights only
 		}
 		if err := allow(m.Dst, access); err != nil {
 			return err
