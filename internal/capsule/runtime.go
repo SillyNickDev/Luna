@@ -113,19 +113,10 @@ func cmpStr(a, b string) int {
 // shortcut: capsules start when enabled, not lazily on their first event; lazy start
 // and 15-minute hibernation need the Phase 3 host API's event subscriptions to define "idle".
 func (rt *Runtime) Enable(pkg *Unpacked, uses []string) (*Capsule, error) {
-	m := pkg.Manifest
-	if len(m.Net) > 0 {
-		return nil, errors.New("network allowlists aren't supported yet; this package can't run")
-	}
-	if len(m.Devices) > 0 {
-		return nil, errors.New("device access isn't supported yet; this package can't run")
-	}
-	if m.Runtime != "native" {
-		return nil, fmt.Errorf("runtime_missing: %s isn't available yet; only native capsules run for now", m.Runtime)
-	}
-	if _, err := entryPath(pkg); err != nil {
+	if err := CanRun(pkg); err != nil {
 		return nil, err
 	}
+	m := pkg.Manifest
 	rt.Disable(m.ID)
 	c := &Capsule{rt: rt, ID: m.ID, Pkg: pkg, Uses: uses, Logs: NewRing(1 << 20), state: Stopped}
 	rt.mu.Lock()
@@ -136,6 +127,22 @@ func (rt *Runtime) Enable(pkg *Unpacked, uses []string) (*Capsule, error) {
 	rt.mu.Unlock()
 	c.Start()
 	return c, nil
+}
+
+// CanRun says why this host can't run pkg, failing closed on features not built yet.
+func CanRun(pkg *Unpacked) error {
+	m := pkg.Manifest
+	if len(m.Net) > 0 {
+		return errors.New("network allowlists aren't supported yet; this package can't run")
+	}
+	if len(m.Devices) > 0 {
+		return errors.New("device access isn't supported yet; this package can't run")
+	}
+	if m.Runtime != "native" {
+		return fmt.Errorf("runtime_missing: %s isn't available yet; only native capsules run for now", m.Runtime)
+	}
+	_, err := entryPath(pkg)
+	return err
 }
 
 // Disable stops a capsule and forgets it.

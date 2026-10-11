@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -28,6 +29,15 @@ CREATE TABLE IF NOT EXISTS ranks (
 	rank    TEXT NOT NULL,
 	set_by  TEXT NOT NULL,
 	updated INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capsules (
+	id       TEXT PRIMARY KEY,
+	version  TEXT NOT NULL,
+	hash     TEXT NOT NULL,
+	enabled  INTEGER NOT NULL,
+	uses     TEXT NOT NULL,
+	approved TEXT NOT NULL,
+	updated  INTEGER NOT NULL
 );`
 
 type Store struct {
@@ -191,4 +201,46 @@ func (s *Store) RealEvents(start, end time.Time) ([]event.Event, error) {
 		out = append(out, ev)
 	}
 	return out, rows.Err()
+}
+
+// CapsuleRow is an installed capsule. Uses are the links the user approved;
+// Approved fingerprints the permission set they said yes to.
+type CapsuleRow struct {
+	ID, Version, Hash, Approved string
+	Enabled                     bool
+	Uses                        []string
+}
+
+func (s *Store) Capsules() ([]CapsuleRow, error) {
+	rows, err := s.db.Query(`SELECT id, version, hash, enabled, uses, approved FROM capsules ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CapsuleRow
+	for rows.Next() {
+		var r CapsuleRow
+		var uses string
+		if err := rows.Scan(&r.ID, &r.Version, &r.Hash, &r.Enabled, &uses, &r.Approved); err != nil {
+			return nil, err
+		}
+		if uses != "" {
+			r.Uses = strings.Split(uses, "\n")
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SaveCapsule(r CapsuleRow) error {
+	_, err := s.db.Exec(`INSERT INTO capsules (id, version, hash, enabled, uses, approved, updated) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET version = excluded.version, hash = excluded.hash, enabled = excluded.enabled,
+		uses = excluded.uses, approved = excluded.approved, updated = excluded.updated`,
+		r.ID, r.Version, r.Hash, r.Enabled, strings.Join(r.Uses, "\n"), r.Approved, time.Now().UnixMilli())
+	return err
+}
+
+func (s *Store) DeleteCapsule(id string) error {
+	_, err := s.db.Exec(`DELETE FROM capsules WHERE id = ?`, id)
+	return err
 }

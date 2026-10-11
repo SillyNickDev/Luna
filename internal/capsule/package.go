@@ -291,3 +291,23 @@ func AddToStore(storeDir, src string) (*Unpacked, error) {
 	}
 	return &Unpacked{Dir: dir, Hash: hash, Manifest: m}, nil
 }
+
+// FromStore re-verifies a package already in the store, so tampering on disk is caught at every start.
+func FromStore(storeDir, hash string) (*Unpacked, error) {
+	if b, err := hex.DecodeString(hash); err != nil || len(b) != sha256.Size {
+		return nil, fmt.Errorf("bad package hash %q", hash)
+	}
+	dir := filepath.Join(storeDir, hash)
+	got, err := Verify(dir)
+	if err != nil {
+		return nil, err
+	}
+	if got != hash {
+		return nil, fmt.Errorf("package %s.. doesn't match its store address", hash[:12])
+	}
+	m, err := LoadManifest(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &Unpacked{Dir: dir, Hash: hash, Manifest: m}, nil
+}

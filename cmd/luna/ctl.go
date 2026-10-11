@@ -11,7 +11,6 @@ import (
 )
 
 // Control socket: one JSON request and one JSON response per connection.
-// ponytail: no peer-credential check yet (Security tab); add with the Phase 2 Linux backend.
 type request struct {
 	Cmd  string   `json:"cmd"`
 	Args []string `json:"args"`
@@ -47,6 +46,9 @@ func serve(ln net.Listener, handle func(request) (string, error)) {
 		}
 		go func() {
 			defer c.Close()
+			if !peerOK(c) {
+				return
+			}
 			c.SetDeadline(time.Now().Add(10 * time.Second))
 			var req request
 			var resp response
@@ -63,21 +65,28 @@ func serve(ln net.Listener, handle func(request) (string, error)) {
 }
 
 func call(p paths, req request) error {
+	out, err := callOut(p, req)
+	if err == nil {
+		fmt.Println(out)
+	}
+	return err
+}
+
+func callOut(p paths, req request) (string, error) {
 	c, err := net.Dial("unix", p.sock)
 	if err != nil {
-		return errors.New("the daemon isn't running; start it with: luna run")
+		return "", errors.New("the daemon isn't running; start it with: luna run")
 	}
 	defer c.Close()
 	if err := json.NewEncoder(c).Encode(req); err != nil {
-		return err
+		return "", err
 	}
 	var resp response
 	if err := json.NewDecoder(c).Decode(&resp); err != nil {
-		return err
+		return "", err
 	}
 	if resp.Err != "" {
-		return errors.New(resp.Err)
+		return "", errors.New(resp.Err)
 	}
-	fmt.Println(resp.Out)
-	return nil
+	return resp.Out, nil
 }

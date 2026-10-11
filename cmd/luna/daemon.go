@@ -79,6 +79,10 @@ func runDaemon(p paths) error {
 
 	g := guard.New(cfg.Get)
 	tw := startTwitch(ctx, p, cfg.Get().Twitch.ClientID, g, publish)
+	caps, err := startCapsules(p, st, publish)
+	if err != nil {
+		return fmt.Errorf("capsules: %w", err)
+	}
 
 	slog.Info("luna running", "config", p.config, "data", p.data)
 	serve(ln, func(req request) (string, error) {
@@ -103,6 +107,8 @@ func runDaemon(p paths) error {
 			pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			return permsCmd(pctx, req.Args, ranks, st, tw, policyFrom(cfg.Get()))
+		case "capsule":
+			return capsuleCmd(p, req.Args, caps, st)
 		case "reload":
 			err := cfg.Reload()
 			onReload(err)
@@ -115,6 +121,7 @@ func runDaemon(p paths) error {
 	})
 
 	slog.Info("shutting down")
+	caps.StopAll()
 	printSub.Close()
 	logSub.Close()
 	<-logged // flush the event log before the database closes

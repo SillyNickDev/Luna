@@ -25,6 +25,11 @@ const usageText = `usage: luna [--config <dir>] <command>
                         ranks: viewer, moderator, luna-mod, head-mod
   chat say <text>       send a chat message through the output guard
   config validate       check luna.toml without applying it
+  capsule install [--yes] <folder|file.capsule>
+  capsule list | enable | disable | restart | logs | inspect <name>
+  capsule uninstall <name> [--keep-data]
+  capsule doctor | pack [dir] [-o file] | verify <path>
+                        plugins, each in its own sandbox
 `
 
 type paths struct{ config, data, sock string }
@@ -57,6 +62,8 @@ func main() {
 			err = auth(p, args[1], args[2:])
 		case args[0] == "chat" && len(args) > 2 && args[1] == "say":
 			err = call(p, request{Cmd: "chat", Args: args[2:]})
+		case args[0] == "capsule":
+			err = capsuleCLI(p, args[1:])
 		case args[0] == "config" && len(args) == 2 && args[1] == "validate":
 			if _, err = config.Load(p.config); err == nil {
 				fmt.Println("config ok:", p.config)

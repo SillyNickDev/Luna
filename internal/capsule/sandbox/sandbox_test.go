@@ -4,9 +4,11 @@ package sandbox
 
 import (
 	"bytes"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,13 +32,23 @@ func buildProbe(t *testing.T, dir string) {
 }
 
 type box struct {
-	pkg, data, secret string
+	pkg, data, secret, otherData, otherLink string
 }
 
 func newBox(t *testing.T) box {
-	b := box{pkg: t.TempDir(), data: t.TempDir(), secret: filepath.Join(t.TempDir(), "token")}
+	b := box{pkg: t.TempDir(), data: t.TempDir(), secret: filepath.Join(t.TempDir(), "token"),
+		otherData: filepath.Join(t.TempDir(), "state.db")}
 	buildProbe(t, b.pkg)
 	os.WriteFile(b.secret, []byte("oauth:secret"), 0o600)
+	os.WriteFile(b.otherData, []byte("another capsule's data"), 0o600)
+	run, _ := os.MkdirTemp("", "lk")
+	t.Cleanup(func() { os.RemoveAll(run) })
+	b.otherLink = filepath.Join(run, "dev.other:show")
+	ln, err := net.Listen("unix", b.otherLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
 	return b
 }
 
@@ -74,7 +86,6 @@ func TestIsolation(t *testing.T) {
 	}{
 		{[]string{"read", "/pkg/probe"}, true},
 		{[]string{"write", "/data/x"}, true},
-		{[]string{"read", "/dev/urandom"}, false}, // endless; read errors out at ReadFile size? see below
 		{[]string{"read", b.secret}, false},
 		{[]string{"ls", home}, false},
 		{[]string{"read", "/etc/passwd"}, false},
@@ -86,15 +97,19 @@ func TestIsolation(t *testing.T) {
 		{[]string{"unshare"}, false},
 		{[]string{"mount"}, false},
 		{[]string{"kill", "1"}, true}, // itself: PID 1 of its own namespace; can't reach the host's
+		{[]string{"kill", strconv.Itoa(os.Getpid())}, false},
+		{[]string{"read", b.otherData}, false},
+		{[]string{"unix", b.otherLink}, false},
+		{[]string{"read", "/proc/1/environ"}, true}, // its own
 	}
 	for _, c := range cases {
-		if c.args[0] == "read" && c.args[1] == "/dev/urandom" {
-			continue // ReadFile on an endless device never returns
-		}
 		out, ex := b.run(t, 64<<20, c.args...)
 		if got := out == "OK"; got != c.ok {
 			t.Errorf("%v: got %q (exit %+v), want ok=%v", c.args, out, ex, c.ok)
 		}
+	}
+	if out, _ := b.run(t, 64<<20, "procs"); out != "1" {
+		t.Errorf("sees processes outside its tree: %s", out)
 	}
 	if out, _ := b.run(t, 64<<20, "env"); !strings.Contains(out, "CAPSULE_TEST=1") || strings.Contains(out, "HOME=") {
 		t.Errorf("environment leaked or missing: %s", out)

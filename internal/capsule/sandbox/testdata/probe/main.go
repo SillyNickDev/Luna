@@ -68,6 +68,16 @@ func main() {
 		time.Sleep(time.Hour)
 	case "exit":
 		os.Exit(n)
+	case "procs": // number of processes it can see
+		ents, _ := os.ReadDir("/proc")
+		pids := 0
+		for _, e := range ents {
+			if _, err := strconv.Atoi(e.Name()); err == nil {
+				pids++
+			}
+		}
+		fmt.Println(pids)
+		return
 	case "env":
 		fmt.Println(os.Environ())
 		return
