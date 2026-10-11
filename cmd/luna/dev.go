@@ -21,7 +21,6 @@ import (
 
 	"luna/internal/capsule"
 	"luna/internal/plugin"
-	"luna/sdk/python"
 )
 
 var initNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -56,22 +55,51 @@ if __name__ == "__main__":
     unittest.main()
 `
 
-// capsuleInit scaffolds a plugin folder: luna capsule init <name> [--runtime python-3.12].
+const tsTemplate = `import { bot } from "@luna/sdk";
+
+bot.on("twitch.channel.follow", (ev) => bot.chat.send(` + "`Welcome to the pack, ${ev.user!.name}!`" + `));
+
+bot.run();
+`
+
+const tsTestTemplate = `// Run with: node --import <Luna's SDK>/register.mjs --test
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { harness } from "@luna/sdk/testing";
+import "./main.ts";
+
+test("welcome", async () => {
+  const t = await harness();
+  await t.emit("twitch.channel.follow", { user: "fox" });
+  assert.deepEqual(t.chat.sent, ["Welcome to the pack, fox!"]);
+});
+`
+
+// templates are each runtime's starter files: entry, test.
+var templates = map[string][3]string{
+	"python-3.12": {"main.py", pyTemplate, "test_main.py\x00" + pyTestTemplate},
+	"node-22":     {"main.ts", tsTemplate, "main.test.ts\x00" + tsTestTemplate},
+}
+
+// capsuleInit scaffolds a plugin folder: luna capsule init <name> [--runtime python-3.12|node-22].
 func capsuleInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	rt := fs.String("runtime", "python-3.12", "runtime: python-3.12")
+	rt := fs.String("runtime", "python-3.12", "runtime: python-3.12 or node-22")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() == 1 && len(args) > 1 { // flags may also follow the name
-		fs.Parse(args[1:])
-	}
 	name := fs.Arg(0)
-	if !initNameRe.MatchString(name) {
-		return errors.New("usage: luna capsule init <name> [--runtime python-3.12]; name is lowercase letters, digits and dashes")
+	if fs.NArg() > 1 { // flags may also follow the name
+		if err := fs.Parse(fs.Args()[1:]); err != nil {
+			return err
+		}
 	}
-	if *rt != "python-3.12" {
-		return fmt.Errorf("runtime %s has no SDK yet; python-3.12 does (TypeScript, Go and Rust come later)", *rt)
+	if !initNameRe.MatchString(name) {
+		return errors.New("usage: luna capsule init <name> [--runtime python-3.12|node-22]; name is lowercase letters, digits and dashes")
+	}
+	tpl, ok := templates[*rt]
+	if !ok {
+		return fmt.Errorf("runtime %s has no template; python-3.12 and node-22 do (Go plugins build as native: see sdk/go)", *rt)
 	}
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("%s already exists", name)
@@ -81,18 +109,19 @@ version = "0.1.0"
 api = "1"
 
 [capsule]
-runtime = "python-3.12"
-entry = "main.py"
+runtime = "%s"
+entry = "%s"
 limits = { memory = "64m", cpu = 0.25 }
 
 [permissions]
 events = ["twitch.channel.follow"]
 chat = ["send"]
-`, strings.ReplaceAll(name, "-", ""))
+`, strings.ReplaceAll(name, "-", ""), *rt, tpl[0])
 	if err := os.Mkdir(name, 0o755); err != nil {
 		return err
 	}
-	for f, body := range map[string]string{"main.py": pyTemplate, "test_main.py": pyTestTemplate, "plugin.toml": manifest} {
+	testName, testBody, _ := strings.Cut(tpl[2], "\x00")
+	for f, body := range map[string]string{tpl[0]: tpl[1], testName: testBody, "plugin.toml": manifest} {
 		if err := os.WriteFile(filepath.Join(name, f), []byte(body), 0o644); err != nil {
 			return err
 		}
@@ -122,11 +151,11 @@ type describedChat struct {
 // author owns (id, version, [capsule], chat and store permissions) are kept; events, commands,
 // config and links come from the code. Event permissions the author widened (twitch.*) stay.
 func generateManifest(p paths, dir string) error {
-	sdk, err := pysdk.Install(filepath.Join(p.data, "sdk"))
+	sdks, err := sdkDirs(p)
 	if err != nil {
 		return err
 	}
-	out, err := capsule.Describe(dir, p.runDir(), p.runtimes(), map[string]string{"python": sdk})
+	out, err := capsule.Describe(dir, p.runDir(), p.runtimes(), sdks)
 	if err != nil {
 		return err
 	}

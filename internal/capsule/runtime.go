@@ -174,7 +174,7 @@ func launch(pkg *Unpacked, runtimesDir string) (*launchSpec, error) {
 		}
 		return &launchSpec{argv: append([]string{"/luna", m.Entry}, m.Args...),
 			mounts: []sandbox.Mount{{Src: exe, Dst: "/luna"}}}, nil
-	case strings.HasPrefix(m.Runtime, "python-"):
+	case strings.HasPrefix(m.Runtime, "python-"), strings.HasPrefix(m.Runtime, "node-"):
 		info, err := ResolveRuntime(runtimesDir, m.Runtime)
 		if err != nil {
 			return nil, err
@@ -184,14 +184,18 @@ func launch(pkg *Unpacked, runtimesDir string) (*launchSpec, error) {
 		}
 		libDir := filepath.Dir(info.Loader)
 		argv := append([]string{"/runtime/" + info.Interpreter}, info.Args...)
-		argv = append(argv, "/sdk/luna/_boot.py", "/pkg/"+m.Entry)
+		boot := "/sdk/luna/_boot.py"
+		if strings.HasPrefix(m.Runtime, "node-") {
+			boot = "/sdk/boot.mjs"
+		}
+		argv = append(argv, boot, "/pkg/"+m.Entry)
 		return &launchSpec{
 			argv:   append(argv, m.Args...),
 			mounts: []sandbox.Mount{{Src: info.Dir, Dst: "/runtime"}, {Src: filepath.Join(info.Dir, "sysroot"), Dst: libDir}},
 			env:    []string{"LD_LIBRARY_PATH=" + libDir},
 		}, nil
 	}
-	return nil, fmt.Errorf("runtime_missing: %s isn't supported yet (native, luna and python-3.12 are)", m.Runtime)
+	return nil, fmt.Errorf("runtime_missing: %s isn't supported yet (native, luna, python-3.12 and node-22 are)", m.Runtime)
 }
 
 // staticSelf is this binary's path, refusing a luna built with cgo: the sandbox has no

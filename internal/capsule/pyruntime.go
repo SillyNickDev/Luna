@@ -87,9 +87,12 @@ var pythonSkip = []string{"python/share/", "python/include/", "python/lib/tcl", 
 
 // AddRuntime downloads, verifies and installs a shared runtime into dir/<name>-<version>.
 func AddRuntime(dir, name string, progress io.Writer) (*RuntimeInfo, error) {
+	if _, ok := nodeRuntimes[name]; ok {
+		return addNode(dir, name, progress)
+	}
 	specs, ok := pythonRuntimes[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown runtime %q (available: python-3.12)", name)
+		return nil, fmt.Errorf("unknown runtime %q (available: python-3.12, node-22)", name)
 	}
 	spec, ok := specs[runtime.GOARCH]
 	if !ok {
@@ -113,7 +116,7 @@ func AddRuntime(dir, name string, progress io.Writer) (*RuntimeInfo, error) {
 	if err := fetch(spec.Python, dl); err != nil {
 		return nil, err
 	}
-	if err := untarPython(dl, tmp); err != nil {
+	if err := untar(dl, tmp, pythonKeep); err != nil {
 		return nil, err
 	}
 	site := filepath.Join(tmp, "site")
@@ -146,7 +149,12 @@ func AddRuntime(dir, name string, progress io.Writer) (*RuntimeInfo, error) {
 		return nil, fmt.Errorf("precompiling: %v\n%s", err, out)
 	}
 
-	info := &RuntimeInfo{Name: name, Version: spec.Version, Interpreter: interp, Args: []string{"-I", "-S"}, Loader: loader}
+	return finishRuntime(tmp, final, &RuntimeInfo{Name: name, Version: spec.Version, Interpreter: interp, Args: []string{"-I", "-S"}, Loader: loader})
+}
+
+// finishRuntime hashes the runtime in tmp, writes its runtime.toml and moves it into place.
+func finishRuntime(tmp, final string, info *RuntimeInfo) (*RuntimeInfo, error) {
+	var err error
 	if info.SHA256, err = treeHash(tmp); err != nil {
 		return nil, err
 	}
@@ -191,9 +199,15 @@ func fetch(d download, dst string) error {
 	return f.Close()
 }
 
-// untarPython extracts the regular files of a python-build-standalone archive into dst.
-// Links are skipped (nothing Luna runs needs them), and every name must stay inside dst.
-func untarPython(src, dst string) error {
+func pythonKeep(name string) (string, bool) {
+	skip := slices.ContainsFunc(pythonSkip, func(p string) bool { return strings.HasPrefix(name+"/", p) || strings.HasPrefix(name, p) })
+	return name, !skip
+}
+
+// untar extracts the regular files of a runtime archive into dst, under the names keep
+// gives them (false skips one). Links are skipped (nothing Luna runs needs them), and
+// every name must stay inside dst.
+func untar(src, dst string, keep func(string) (string, bool)) error {
 	f, err := os.Open(src)
 	if err != nil {
 		return err
@@ -221,8 +235,12 @@ func untarPython(src, dst string) error {
 		if !localPath(name) {
 			return fmt.Errorf("archive entry %q escapes the runtime", h.Name)
 		}
-		if slices.ContainsFunc(pythonSkip, func(p string) bool { return strings.HasPrefix(name+"/", p) || strings.HasPrefix(name, p) }) {
+		name, ok := keep(name)
+		if !ok {
 			continue
+		}
+		if !localPath(name) {
+			return fmt.Errorf("archive entry %q escapes the runtime", h.Name)
 		}
 		switch h.Typeflag {
 		case tar.TypeDir:

@@ -6,26 +6,30 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PREFIX  ?= $(HOME)/.local
 GO      ?= go
 PYTHON  ?= python3
+NODE    ?= node
 GOFLAGS := -trimpath -ldflags="-s -w -X main.lunaVersion=$(VERSION)"
 export CGO_ENABLED := 0
 
 PLATFORMS := linux/amd64 linux/arm64
 VENV      := build/venv
 
-.PHONY: all build test test-go test-py check proto release install uninstall clean help
+.PHONY: all build test test-go test-py test-node check proto release install uninstall clean help
 
 all: build
 
 build: ## build ./luna for this machine
 	$(GO) build $(GOFLAGS) -o luna ./cmd/luna
 
-test: test-go test-py ## run every test
+test: test-go test-py test-node ## run every test
 
 test-go: ## Go tests (the sandbox tests need user namespaces and Landlock)
 	$(GO) test ./...
 
 test-py: ## Python SDK tests
 	cd sdk/python/tests && $(PYTHON) -m unittest test_sdk
+
+test-node: ## TypeScript SDK tests (Node 22.18 or newer)
+	$(NODE) --import ./sdk/node/register.mjs --test sdk/node/tests/sdk.test.ts
 
 check: ## formatting and vet, as CI would
 	@test -z "$$(gofmt -l .)" || { gofmt -l .; echo "run gofmt -w ."; exit 1; }

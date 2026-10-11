@@ -1,0 +1,28 @@
+id = "dev.test.example"
+version = "0.1.0"
+api = "1"
+
+[capsule]
+runtime = "node-22"
+entry = "main.ts"
+
+[permissions]
+events = ["hr.update", "twitch.channel.*", "twitch.chat.message"]
+chat = ["send", "announce"]
+store = true
+mod = ["timeout"]
+twitch = ["read"]
+viewers = true
+osc = ["send:/avatar/parameters/Ears", "read"]
+
+[links]
+uses = ["dev.sable.overlay:show"]
+
+[[chat.commands]]
+name = "hr"
+aliases = ["heartrate"]
+cooldown = { global = "10s" }
+
+[[chat.commands]]
+name = "zap"
+capability = "mod.timeout"

@@ -23,6 +23,7 @@ import (
 	"luna/internal/plugin"
 	"luna/internal/store"
 	"luna/plugins"
+	"luna/sdk/node"
 	"luna/sdk/python"
 )
 
@@ -241,12 +242,12 @@ func startCapsules(p paths, st *store.Store, publish func(event.Event), host *pl
 	if err := ownedDir(run); err != nil {
 		return nil, err
 	}
-	sdk, err := pysdk.Install(filepath.Join(p.data, "sdk"))
+	sdks, err := sdkDirs(p)
 	if err != nil {
-		return nil, fmt.Errorf("python sdk: %w", err)
+		return nil, err
 	}
 	rt := &capsule.Runtime{
-		SDKDirs:     map[string]string{"python": sdk},
+		SDKDirs:     sdks,
 		RunDir:      run,
 		DataDir:     p.capsuleData(),
 		RuntimesDir: p.runtimes(),
@@ -553,4 +554,17 @@ func checkClash(rt *capsule.Runtime, u *capsule.Unpacked) error {
 	}
 	pm.ID = u.Manifest.ID
 	return claimsClash(rt, pm.ID, pm)
+}
+
+// sdkDirs installs the SDKs built into this luna, keyed by runtime family, for mounting at /sdk.
+func sdkDirs(p paths) (map[string]string, error) {
+	py, err := pysdk.Install(filepath.Join(p.data, "sdk"))
+	if err != nil {
+		return nil, fmt.Errorf("python sdk: %w", err)
+	}
+	node, err := nodesdk.Install(filepath.Join(p.data, "sdk"))
+	if err != nil {
+		return nil, fmt.Errorf("node sdk: %w", err)
+	}
+	return map[string]string{"python": py, "node": node}, nil
 }
