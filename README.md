@@ -72,7 +72,7 @@ flowchart TB
 Luna requires **Go 1.22+** and compiles into a single, dependency-free static binary:
 
 ```sh
-git clone https://github.com/nick/Luna.git
+git clone https://github.com/sillynickdev/Luna.git
 cd Luna
 make build
 ```
